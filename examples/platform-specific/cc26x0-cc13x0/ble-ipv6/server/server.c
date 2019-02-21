@@ -30,105 +30,68 @@
 
 /**
  * \file
- *    A simple IPv6-over-BLE UDP-client.
+ *    A simple IPv6-over-BLE UDP-server.
  *
  * \author
  *    Michael Spoerk <michael.spoerk@tugraz.at>
  */
 /*---------------------------------------------------------------------------*/
 #include "contiki.h"
-#include "contiki-lib.h"
-#include "contiki-net.h"
-
-#include "net/ipv6/uip-icmp6.h"
+#include "os/net/ipv6/uip.h"
+#include "os/net/ipv6/uip-udp-packet.h"
+#include "sys/log.h"
+#define LOG_MODULE "user"
+#define LOG_LEVEL LOG_LEVEL_MAIN
 
 #include <string.h>
-#include <stdio.h>
-
-#include "os/dev/ble-hal.h"
 /*---------------------------------------------------------------------------*/
-#define SERVER_IP               "::"
 #define CLIENT_PORT           61617
 #define SERVER_PORT           61616
 
-#define PING_TIMEOUT              (CLOCK_SECOND / 4)
-#define CLIENT_SEND_INTERVAL      (CLOCK_SECOND * 1)
-
 #define UDP_LEN_MAX           255
 /*---------------------------------------------------------------------------*/
-static uip_ipaddr_t server_addr;
-static struct uip_icmp6_echo_reply_notification icmp_notification;
-static uint8_t echo_received;
-static struct uip_udp_conn *conn;
+static struct uip_udp_conn *server_conn;
 
-static struct etimer timer;
 static char buf[UDP_LEN_MAX];
 static uint16_t packet_counter;
 /*---------------------------------------------------------------------------*/
-PROCESS(ipv6_ble_client_process, "IPv6 over BLE - client process");
-AUTOSTART_PROCESSES(&ipv6_ble_client_process);
-/*---------------------------------------------------------------------------*/
-void
-icmp_reply_handler(uip_ipaddr_t *source, uint8_t ttl,
-                   uint8_t *data, uint16_t datalen)
-{
-  if(uip_ip6addr_cmp(source, &server_addr)) {
-    printf("echo response received\n");
-    echo_received = 1;
-  }
-}
+PROCESS(ipv6_ble_server_process, "IPv6 over BLE - server process");
+AUTOSTART_PROCESSES(&ipv6_ble_server_process);
 /*---------------------------------------------------------------------------*/
 static void
 tcpip_handler(void)
 {
-  char data[UDP_LEN_MAX];
   if(uip_newdata()) {
-    strncpy(data, uip_appdata, uip_datalen());
-    data[uip_datalen()] = '\0';
-    printf("rec. message: <%s>\n", data);
+    /* process received message */
+    strncpy(buf, uip_appdata, uip_datalen());
+    buf[uip_datalen()] = '\0';
+    LOG_DBG("rec. message: <%s>\n", buf);
+
+    /* send response message */
+    uip_ipaddr_copy(&server_conn->ripaddr, &UIP_IP_BUF->srcipaddr);
+    sprintf(buf, "Hello client %04u!", packet_counter);
+    LOG_DBG("send message: <%s>\n", buf);
+    uip_udp_packet_send(server_conn, buf, strlen(buf));
+    packet_counter++;
+
+    memset(&server_conn->ripaddr, 0, sizeof(server_conn->ripaddr));
   }
 }
 /*---------------------------------------------------------------------------*/
-static void
-timeout_handler(void)
-{
-  sprintf(buf, "Hello server %04u!", packet_counter);
-  printf("send message: <%s>\n", buf);
-  uip_udp_packet_send(conn, buf, strlen(buf));
-  packet_counter++;
-}
-/*---------------------------------------------------------------------------*/
-PROCESS_THREAD(ipv6_ble_client_process, ev, data)
+PROCESS_THREAD(ipv6_ble_server_process, ev, data)
 {
   PROCESS_BEGIN();
-  printf("IPv6-over-BLE client started\n");
+  LOG_DBG("CC26XX-IPv6-over-BLE server started\n");
 
-  uiplib_ipaddrconv(SERVER_IP, &server_addr);
-  uip_icmp6_echo_reply_callback_add(&icmp_notification, icmp_reply_handler);
-
-  printf("pinging the IPv6-over-BLE server\n");
-
-  do {
-    etimer_set(&timer, PING_TIMEOUT);
-    PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));
-    uip_icmp6_send(&server_addr, ICMP6_ECHO_REQUEST, 0, 20);
-  } while(!echo_received);
-
-  conn = udp_new(&server_addr, UIP_HTONS(SERVER_PORT), NULL);
-  udp_bind(conn, UIP_HTONS(CLIENT_PORT));
-
-  etimer_set(&timer, CLIENT_SEND_INTERVAL);
+  server_conn = udp_new(NULL, UIP_HTONS(CLIENT_PORT), NULL);
+  udp_bind(server_conn, UIP_HTONS(SERVER_PORT));
 
   while(1) {
-    PROCESS_YIELD();
-    if((ev == PROCESS_EVENT_TIMER) && (data == &timer)) {
-      timeout_handler();
-      etimer_set(&timer, CLIENT_SEND_INTERVAL);
-    } else if(ev == tcpip_event) {
+    PROCESS_WAIT_EVENT();
+    if(ev == tcpip_event) {
       tcpip_handler();
     }
   }
-
   PROCESS_END();
 }
 /*---------------------------------------------------------------------------*/

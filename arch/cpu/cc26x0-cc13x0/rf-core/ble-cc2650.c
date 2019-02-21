@@ -263,13 +263,13 @@ set_object(radio_param_t param, const void *src, size_t size)
 /*---------------------------------------------------------------------------*/
 const struct radio_driver ble_cc2650_driver = {
   init,
-  NULL,
-  NULL,
+  NULL, //prepare
+  NULL, //transmit
   send,
-  NULL,
-  NULL,
-  NULL,
-  NULL,
+  NULL, //read
+  NULL, //clear-channel assessment
+  NULL, //receiving_packet
+  NULL, //pending_packet
   on,
   off,
   get_value,
