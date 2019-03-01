@@ -65,12 +65,12 @@ tcpip_handler(void)
     /* process received message */
     strncpy(buf, uip_appdata, uip_datalen());
     buf[uip_datalen()] = '\0';
-    LOG_DBG("rec. message: <%s>\n", buf);
+    LOG_INFO("rec. message: <%s>\n", buf);
 
     /* send response message */
     uip_ipaddr_copy(&server_conn->ripaddr, &UIP_IP_BUF->srcipaddr);
     sprintf(buf, "Hello client %04u!", packet_counter);
-    LOG_DBG("send message: <%s>\n", buf);
+    LOG_INFO("send message: <%s>\n", buf);
     uip_udp_packet_send(server_conn, buf, strlen(buf));
     packet_counter++;
 
@@ -81,7 +81,7 @@ tcpip_handler(void)
 PROCESS_THREAD(ipv6_ble_server_process, ev, data)
 {
   PROCESS_BEGIN();
-  LOG_DBG("CC26XX-IPv6-over-BLE server started\n");
+  LOG_INFO("CC26XX-IPv6-over-BLE server started\n");
 
   server_conn = udp_new(NULL, UIP_HTONS(CLIENT_PORT), NULL);
   udp_bind(server_conn, UIP_HTONS(SERVER_PORT));

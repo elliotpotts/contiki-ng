@@ -73,19 +73,19 @@
 #define LOG_MODULE "BLE-HAL"
 #define LOG_LEVEL LOG_LEVEL_MAIN
 /*---------------------------------------------------------------------------*/
-#define CMD_GET_STATUS(X)         (((rfc_radioOp_t *)X)->status)
-#define RX_ENTRY_STATUS(X)        (((rfc_dataEntry_t *)X)->status)
-#define RX_ENTRY_LENGTH(X)        (((rfc_dataEntry_t *)X)->length)
+#define CMD_GET_STATUS(X)       (((rfc_radioOp_t *)X)->status)
+#define RX_ENTRY_STATUS(X)      (((rfc_dataEntry_t *)X)->status)
+#define RX_ENTRY_LENGTH(X)      (((rfc_dataEntry_t *)X)->length)
 #define RX_ENTRY_TYPE(X)        (((rfc_dataEntry_t *)X)->config.type)
-#define RX_ENTRY_NEXT_ENTRY(X)      (((rfc_dataEntry_t *)X)->pNextEntry)
-#define RX_ENTRY_DATA_LENGTH(X)     ((X)[8])
-#define RX_ENTRY_DATA_PTR(X)      (&(X)[9])
-#define TX_ENTRY_STATUS(X)        RX_ENTRY_STATUS(X)
-#define TX_ENTRY_LENGTH(X)        RX_ENTRY_LENGTH(X)
+#define RX_ENTRY_NEXT_ENTRY(X)  (((rfc_dataEntry_t *)X)->pNextEntry)
+#define RX_ENTRY_DATA_LENGTH(X) ((X)[8])
+#define RX_ENTRY_DATA_PTR(X)    (&(X)[9])
+#define TX_ENTRY_STATUS(X)      RX_ENTRY_STATUS(X)
+#define TX_ENTRY_LENGTH(X)      RX_ENTRY_LENGTH(X)
 #define TX_ENTRY_TYPE(X)        RX_ENTRY_TYPE(X)
-#define TX_ENTRY_NEXT_ENTRY(X)      RX_ENTRY_NEXT_ENTRY(X)
-#define TX_ENTRY_FRAME_TYPE(X)      ((X)[8])
-#define TX_ENTRY_DATA_PTR(X)      (&(X)[9])
+#define TX_ENTRY_NEXT_ENTRY(X)  RX_ENTRY_NEXT_ENTRY(X)
+#define TX_ENTRY_FRAME_TYPE(X)  ((X)[8])
+#define TX_ENTRY_DATA_PTR(X)    (&(X)[9])
 /*---------------------------------------------------------------------------*/
 /* LPM                                                                       */
 /*---------------------------------------------------------------------------*/
@@ -102,12 +102,12 @@ request(void)
 LPM_MODULE(cc26xx_ble_lpm_module, request, NULL, NULL, LPM_DOMAIN_NONE);
 /*---------------------------------------------------------------------------*/
 /* timing utilities                                */
-#define TIME_UNIT_MS          1000    /* 1000 times per second */
-#define TIME_UNIT_0_625_MS        1600    /* 1600 times per second */
-#define TIME_UNIT_1_25_MS        800    /*  800 times per second */
-#define TIME_UNIT_10_MS          100    /*  100 times per second */
-#define TIME_UNIT_RF_CORE      4000000    /*  runs at 4 MHz */
-#define TIME_UNIT_RTIMER        RTIMER_SECOND
+#define TIME_UNIT_MS       1000          /* 1000 times per second */
+#define TIME_UNIT_0_625_MS 1600          /* 1600 times per second */
+#define TIME_UNIT_1_25_MS  800           /* 800 times per second */
+#define TIME_UNIT_10_MS    100           /* 100 times per second */
+#define TIME_UNIT_RF_CORE  4000000       /* runs at 4 MHz */
+#define TIME_UNIT_RTIMER   RTIMER_SECOND
 
 rtimer_clock_t
 ticks_from_unit(uint32_t value, uint32_t unit)
@@ -125,19 +125,18 @@ ticks_to_unit(rtimer_clock_t value, uint32_t unit)
 #if RADIO_CONF_BLE5
 #define CMD_BUFFER_SIZE         28
 #define PARAM_BUFFER_SIZE       48
-#define OUTPUT_BUFFER_SIZE        24
+#define OUTPUT_BUFFER_SIZE      24
 #else
 #define CMD_BUFFER_SIZE         24
 #define PARAM_BUFFER_SIZE       36
-#define OUTPUT_BUFFER_SIZE        24
+#define OUTPUT_BUFFER_SIZE      24
 #endif
 /*---------------------------------------------------------------------------*/
 /* ADVERTISING data structures												 */
-#define ADV_RX_BUFFERS_OVERHEAD     8
-#define ADV_RX_BUFFERS_DATA_LEN     60
-#define ADV_RX_BUFFERS_LEN        (ADV_RX_BUFFERS_OVERHEAD + ADV_RX_BUFFERS_DATA_LEN)
-#define ADV_RX_BUFFERS_NUM        2
-
+#define ADV_RX_BUFFERS_OVERHEAD       8
+#define ADV_RX_BUFFERS_DATA_LEN       60
+#define ADV_RX_BUFFERS_LEN            (ADV_RX_BUFFERS_OVERHEAD + ADV_RX_BUFFERS_DATA_LEN)
+#define ADV_RX_BUFFERS_NUM            2
 #define ADV_PREPROCESSING_TIME_TICKS  65
 
 /**
@@ -180,13 +179,6 @@ static void advertising_event(struct rtimer *t, void *ptr);
 #endif
 #else
 #define BLE_MODE_MAX_CONNECTIONS    1
-#endif
-
-/* BLE address of the BLE slave that wants to establish a connection */
-#ifdef BLE_MODE_CONF_INIT_PEER_ADDR
-#define BLE_MODE_INIT_PEER_ADDR     BLE_MODE_CONF_INIT_PEER_ADDR
-#else
-#define BLE_MODE_INIT_PEER_ADDR     0xCC78AB714007
 #endif
 
 /* maximum packet length that is transmitted during a single connection event*/
@@ -298,6 +290,7 @@ typedef struct {
   uint16_t init_latency;
   uint16_t init_timeout;
   uint16_t init_window;
+  uint8_t peer_addr[BLE_ADDR_SIZE];
   ble_addr_type_t own_addr_type;
   rtimer_clock_t start_rt;
   struct rtimer timer;
@@ -550,7 +543,7 @@ static ble_result_t
 set_adv_data(unsigned short data_len, char *data)
 {
   if(data_len > BLE_ADV_DATA_LEN) {
-    LOG_WARN("BLE-HAL: adv_data too long\n");
+    LOG_WARN("adv_data too long\n");
     return BLE_RESULT_INVALID_PARAM;
   }
   adv_param.adv_data_len = data_len;
@@ -562,7 +555,7 @@ static ble_result_t
 set_scan_resp_data(unsigned short data_len, char *data)
 {
   if(data_len > BLE_SCAN_RESP_DATA_LEN) {
-    LOG_WARN("BLE-HAL: scan_resp_data too long\n");
+    LOG_WARN("scan_resp_data too long\n");
     return BLE_RESULT_INVALID_PARAM;
   }
   adv_param.scan_rsp_data_len = data_len;
@@ -574,11 +567,9 @@ static ble_result_t
 set_adv_enable(unsigned short enable)
 {
   uint32_t now = RTIMER_NOW();
-  if((enable) && (!adv_param.active)) {
-    adv_param.start_rt = now + ticks_from_unit(adv_param.adv_interval,
-                                               TIME_UNIT_1_25_MS);
-    rtimer_set(&adv_param.timer, adv_param.start_rt,
-               0, advertising_event, (void *)&adv_param);
+  if(enable && !adv_param.active) {
+    adv_param.start_rt = now + ticks_from_unit(adv_param.adv_interval, TIME_UNIT_1_25_MS);
+    rtimer_set(&adv_param.timer, adv_param.start_rt, 0, advertising_event, (void *)&adv_param);
   }
   return BLE_RESULT_OK;
 }
@@ -664,20 +655,21 @@ ble_result_t create_connection (
   unsigned int scan_interval,
   unsigned int scan_window,
   ble_addr_type_t peer_addr_type,
-  uint8_t *peer_addr,
+  uint8_t* peer_addr,
   ble_addr_type_t own_addr_type,
   unsigned int conn_interval,
   unsigned int conn_latency,
   unsigned int supervision_timeout
 ) {
 #if UIP_CONF_ROUTER
-  LOG_DBG("BLE-HAL: initiating connection...\n");
+  LOG_DBG("initiating connection...\n");
   ble_init_param_t *init = &init_param;
   rtimer_clock_t interval = conn_interval;
   init->init_interval = interval;
   init->init_latency = conn_latency;
   init->init_timeout = supervision_timeout;
   init->init_window = 15;
+  memcpy(&init->peer_addr, peer_addr, sizeof(uint8_t) * BLE_ADDR_SIZE);
   init->own_addr_type = BLE_ADDR_TYPE_PUBLIC;
   init->start_rt = RTIMER_NOW() + ticks_from_unit(interval, TIME_UNIT_1_25_MS);
   rtimer_set(&init->timer, init->start_rt - INIT_PREPROCESSING_TIME_TICKS, 0, initiator_event, (void*)init);
@@ -694,11 +686,11 @@ send_frame(ble_conn_param_t *conn, uint8_t *data, uint8_t data_len, uint8_t fram
 {
   uint8_t *tx_buffer = tx_queue_get_buffer(conn);
   if(tx_buffer == NULL) {
-    LOG_WARN("BLE-HAL: send_frame: no TX buffer available (conn_handle: 0x%04X)\n", conn->conn_handle);
+    LOG_WARN("send_frame: no TX buffer available (conn_handle: 0x%04X)\n", conn->conn_handle);
     return BLE_RESULT_ERROR;
   }
   if(data_len > CONN_BLE_BUFFER_SIZE) {
-    LOG_WARN("BLE-HAL: send_frame: data too long (%d bytes)\n", data_len);
+    LOG_WARN("send_frame: data too long (%d bytes)\n", data_len);
     return BLE_RESULT_ERROR;
   }
 
@@ -779,7 +771,7 @@ send(void *buf, unsigned short buf_len)
 
   linkaddr_copy(&dest_addr, packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
 
-  LOG_DBG("ble-hal: sending %d bytes\n", buf_len);
+  LOG_DBG("sending %d bytes\n", buf_len);
 
   for(loop_conn = 0; loop_conn < conn_counter; loop_conn++) {
     conn = &conn_param[loop_conn];
@@ -794,7 +786,7 @@ send(void *buf, unsigned short buf_len)
           result = send_frame(conn, data, data_len, BLE_DATA_PDU_LLID_DATA_FRAGMENT);
         }
         if(result != BLE_RESULT_OK) {
-          LOG_WARN("ble-hal: send was unsuccessful\n");
+          LOG_WARN("send was unsuccessful\n");
           return result;
         }
       }
@@ -860,9 +852,6 @@ const struct ble_hal_driver ble_hal =
   send_list,
   read_connection_interval
 };
-void __error__ (char *pcFilename, uint32_t ui32Line) {
-  LOG_DBG("ti driverlib error! at: %s:%lu\n", pcFilename, ui32Line);
-}
 /*---------------------------------------------------------------------------*/
 static void
 advertising_rx(ble_adv_param_t *param)
@@ -927,7 +916,7 @@ advertising_rx(ble_adv_param_t *param)
       c_param->conn_handle = conn_counter;
       c_param->active = 1;
       conn_counter++;
-      LOG_INFO("BLE-HAL: connection (0x%04X) created\n", c_param->conn_handle);
+      LOG_INFO("connection (0x%04X) created\n", c_param->conn_handle);
     }
 
     /* free current entry (clear BLE data length & reset status) */
@@ -944,7 +933,7 @@ advertising_event(struct rtimer *t, void *ptr)
   uint32_t wakeup;
 
   if(on() != BLE_RESULT_OK) {
-    LOG_ERR("BLE-HAL: advertising event: could not enable rf core\n");
+    LOG_ERR("advertising event: could not enable rf core\n");
     return;
   }
 
@@ -959,7 +948,6 @@ advertising_event(struct rtimer *t, void *ptr)
                               param->param_buf, param->output_buf);
     rf_ble_cmd_send(param->cmd_buf);
     rf_ble_cmd_wait(param->cmd_buf);
-    //LOG_DBG("BLE-HAL: sent advertising event\n");
   }
 
   off();
@@ -997,7 +985,7 @@ initiator_rx(ble_init_param_t *init)
       conn->active = 1;
       conn->conn_handle = conn_counter;
       conn_counter++;
-      LOG_DBG("BLE-HAL: connection (0x%04X) created\n", conn->conn_handle);
+      LOG_DBG("connection (0x%04X) created\n", conn->conn_handle);
 
       /* notify the upper layers that a connection was established */
       packetbuf_clear();
@@ -1037,8 +1025,12 @@ initiator_event(struct rtimer *t, void *ptr)
   whitelist[0].conf.bEnable = 1;  /* enabled */
   whitelist[0].conf.addrType = 0; /* public */
   whitelist[0].conf.bWlIgn = 0; /* not ignored */
-  whitelist[0].address = (BLE_MODE_INIT_PEER_ADDR & 0xFFFF);
-  whitelist[0].addressHi = (BLE_MODE_INIT_PEER_ADDR & 0xFFFFFFFF0000) >> 16;
+  whitelist[0].addressHi = init->peer_addr[0] << 24
+                         | init->peer_addr[1] << 16
+                         | init->peer_addr[2] << 8
+                         | init->peer_addr[3];
+  whitelist[0].address = init->peer_addr[4] << 8
+                       | init->peer_addr[5];
 
   /* If connections to multiple slaves should be supported,
    * this slaves need to be added to the whitelist */
@@ -1067,7 +1059,7 @@ initiator_event(struct rtimer *t, void *ptr)
                                   init->output_buf, ticks_to_unit(init->start_rt, TIME_UNIT_RF_CORE));
 
   if(on() != BLE_RESULT_OK) {
-    LOG_DBG("BLE-HAL: initiator_event: could not enable rf core\n");
+    LOG_DBG("initiator_event: could not enable rf core\n");
     return;
   }
   rf_ble_cmd_send(init->cmd_buf);
@@ -1082,7 +1074,7 @@ initiator_event(struct rtimer *t, void *ptr)
   initiator_rx(init);
 
   if(conn_counter == BLE_MODE_MAX_CONNECTIONS) {
-    LOG_DBG("stop initiating\n");
+    LOG_DBG("hit connection cap; stop initiating\n");
     return;
   }
 
@@ -1133,7 +1125,7 @@ process_ll_ctrl_msg(ble_conn_param_t *conn, uint8_t input_len, uint8_t *input, u
   uint8_t i;
 
   if(op_code == BLE_LL_CONN_UPDATE_REQ) {
-    LOG_INFO("BLE-HAL: connection update request received\n");
+    LOG_INFO("connection update request received\n");
     memcpy(&conn->conn_update_win_size, &input[1], 1);
     memcpy(&conn->conn_update_win_offset, &input[2], 2);
     memcpy(&conn->conn_update_interval, &input[4], 2);
@@ -1141,7 +1133,7 @@ process_ll_ctrl_msg(ble_conn_param_t *conn, uint8_t input_len, uint8_t *input, u
     memcpy(&conn->conn_update_timeout, &input[8], 2);
     memcpy(&conn->conn_update_counter, &input[10], 2);
   } else if(op_code == BLE_LL_CHANNEL_MAP_REQ) {
-    LOG_INFO("BLE-HAL: channel map update received\n");
+    LOG_INFO("channel map update received\n");
     memcpy(&channel_map, &input[1], 5);
     memcpy(&instant, &input[6], 2);
 
@@ -1154,24 +1146,24 @@ process_ll_ctrl_msg(ble_conn_param_t *conn, uint8_t input_len, uint8_t *input, u
       }
     }
   } else if(op_code == BLE_LL_FEATURE_REQ) {
-    LOG_INFO("BLE-HAL: feature request received\n");
+    LOG_INFO("feature request received\n");
     output[0] = BLE_LL_FEATURE_RSP;
     memset(&output[1], 0x00, 8);
     *output_len = 9;
   } else if(op_code == BLE_LL_VERSION_IND) {
-    LOG_INFO("BLE-HAL: version request received\n");
+    LOG_INFO("version request received\n");
     output[0] = BLE_LL_VERSION_IND;
     output[1] = 7;
     memset(&output[2], 0xAA, 4);
     *output_len = 6;
   } else if(op_code == BLE_LL_CONN_PARAM_REQ) {
-    LOG_INFO("BLE-HAL: connection parameter request received\n");
+    LOG_INFO("connection parameter request received\n");
     memcpy(&interval, &input[1], 2); /* use interval min */
     memcpy(&latency, &input[5], 2);
     memcpy(&timeout, &input[7], 2);
     connection_update(conn->conn_handle, interval, latency, timeout);
   } else {
-    LOG_WARN("BLE-HAL: unknown LL control code: %02X\n", op_code);
+    LOG_WARN("unknown LL control code: %02X\n", op_code);
   }
 }
 /*---------------------------------------------------------------------------*/
@@ -1405,9 +1397,9 @@ connection_event_master(struct rtimer *t, void *ptr)
 
   if((CMD_GET_STATUS(conn->cmd_buf) == RF_CORE_RADIO_OP_STATUS_BLE_DONE_NOSYNC) && (conn->skipped_events < conn->latency)) {
     conn->skipped_events++;
-    LOG_DBG("BLE-HAL: conn_event %4d skipped\n", conn->counter);
+    LOG_DBG("conn_event %4d skipped\n", conn->counter);
   } else if(CMD_GET_STATUS(conn->cmd_buf) != RF_CORE_RADIO_OP_STATUS_BLE_DONE_OK) {
-    LOG_DBG("BLE-HAL: conn_handle: 0x%04X, status: 0x%04X; connection event counter: %d, channel: %d\n",
+    LOG_DBG("conn_handle: 0x%04X, status: 0x%04X; connection event counter: %d, channel: %d\n",
            conn->conn_handle, CMD_GET_STATUS(conn->cmd_buf), conn->counter, conn->mapped_channel);
   } else {
     conn->skipped_events = 0;
@@ -1432,7 +1424,7 @@ PROCESS_THREAD(ble_hal_conn_rx_process, ev, data) {
   rfc_bleMasterSlaveOutput_t *output = (rfc_bleMasterSlaveOutput_t *)conn->output_buf;
   uint8_t tx_buffers_sent;
   PROCESS_BEGIN();
-  LOG_DBG("BLE-HAL: conn rx process start\n");
+  LOG_DBG("conn rx process start\n");
 
   while(1) {
     PROCESS_WAIT_EVENT_UNTIL(ev == rx_data_event);

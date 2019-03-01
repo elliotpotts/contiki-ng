@@ -280,12 +280,12 @@ init(void)
   }
 
   /* Initialize the BLE controller */
-  NETSTACK_RADIO.init(); // why twice?
   NETSTACK_RADIO.get_object(RADIO_CONST_BLE_BD_ADDR, &ble_addr, BLE_ADDR_SIZE);
+  LOG_DBG("ble address is: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", ble_addr[0], ble_addr[1], ble_addr[2], ble_addr[3], ble_addr[4], ble_addr[5]);
 
   #if UIP_CONF_ROUTER
   int conn_interval;
-  const unsigned char ble_peer_addr[BLE_ADDR_SIZE] = {0xcc, 0x78, 0xab, 0x77, 0xa7, 0x82};
+  const unsigned char ble_peer_addr[BLE_ADDR_SIZE] = {0xCC, 0x78, 0xAB, 0x71, 0x40, 0x07};
   
   /* convert to the BLE controller units (in 1.25 ms) */
   conn_interval = (int)(((double)(CONNECTION_INTERVAL_MS)) / 1.25);
@@ -320,7 +320,7 @@ init(void)
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_ADV_ENABLE, 1);
   #endif
   
-  NETSTACK_MAC.on();
+  NETSTACK_MAC.on(); //TODO: mac isn't init()'d yet, how can it be turned on?
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -591,8 +591,8 @@ static int
 on(void)
 {
   LOG_DBG("on()\n");
-  process_start(&ble_l2cap_tx_process, NULL);
   NETSTACK_RADIO.on();
+  process_start(&ble_l2cap_tx_process, NULL);
   return 0;
 }
 /*---------------------------------------------------------------------------*/
