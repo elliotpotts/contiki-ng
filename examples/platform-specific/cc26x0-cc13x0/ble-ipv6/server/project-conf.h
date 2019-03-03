@@ -12,6 +12,8 @@
 #define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_DBG
 #define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
 
+#define RTIMER_CONF_MULTIPLE_ACCESS             1
+
 #define PACKETBUF_CONF_SIZE                     1280
 #define QUEUEBUF_CONF_NUM                       1
 #define UIP_CONF_BUFFER_SIZE                    1280

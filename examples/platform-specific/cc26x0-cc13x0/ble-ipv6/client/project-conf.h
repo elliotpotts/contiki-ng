@@ -12,6 +12,8 @@
 #define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_DBG
 #define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
 
+
+
 #define PACKETBUF_CONF_SIZE                     1280
 #define QUEUEBUF_CONF_NUM                       1
 #define UIP_CONF_BUFFER_SIZE                    1280
@@ -29,7 +31,7 @@
 #define UIP_CONF_ND6_SEND_NS                    0
 
 #define BLE_CONF_DEVICE_NAME                    "Ell's CC2650 Client"
-#define BLE_MODE_CONF_MAX_CONNECTIONS           2
+#define BLE_MODE_CONF_MAX_CONNECTIONS           1
 
 /* 6LoWPAN settings */
 #define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         1280

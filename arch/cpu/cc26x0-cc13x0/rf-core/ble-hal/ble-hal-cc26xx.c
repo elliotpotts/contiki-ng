@@ -1021,7 +1021,7 @@ initiator_event(struct rtimer *t, void *ptr)
   init_connection_parameters(conn, interval, win_size, win_offset, latency, timeout);
 
   rfc_bleWhiteListEntry_t whitelist[BLE_MODE_MAX_CONNECTIONS];
-  whitelist[0].size = 1;
+  whitelist[0].size = 2;
   whitelist[0].conf.bEnable = 1;  /* enabled */
   whitelist[0].conf.addrType = 0; /* public */
   whitelist[0].conf.bWlIgn = 0; /* not ignored */
@@ -1032,8 +1032,16 @@ initiator_event(struct rtimer *t, void *ptr)
   whitelist[0].address = init->peer_addr[4] << 8
                        | init->peer_addr[5];
 
-  /* If connections to multiple slaves should be supported,
-   * this slaves need to be added to the whitelist */
+  whitelist[1].size = 0;
+  whitelist[1].conf.bEnable = 1;
+  whitelist[1].conf.addrType = 0;
+  whitelist[1].conf.bWlIgn = 0;
+  whitelist[1].addressHi = 0x54 << 24
+                         | 0x6C << 16
+                         | 0x0E << 8
+                         | 0x83;
+  whitelist[1].address = 0x3F << 8
+                       | 0xE6;
 
   scaHop = (conn->sca << 5) + conn->hop;
 
