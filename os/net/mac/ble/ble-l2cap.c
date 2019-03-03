@@ -320,7 +320,7 @@ init(void)
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_ADV_ENABLE, 1);
   #endif
   
-  NETSTACK_MAC.on(); //TODO: mac isn't init()'d yet, how can it be turned on?
+  NETSTACK_MAC.on();
 }
 /*---------------------------------------------------------------------------*/
 static void
@@ -328,7 +328,6 @@ send_l2cap_conn_req(l2cap_channel_t *channel)
 {
   uint8_t data[18];
   uint16_t le_psm = L2CAP_IPSP_PSM;
-  LOG_DBG("send_l2cap_conn_req\n");
   /* length */
   data[0] = 0x0E;
   data[1] = 0x00;
@@ -349,13 +348,15 @@ send_l2cap_conn_req(l2cap_channel_t *channel)
   memcpy(&data[14], &channel->channel_own.mps, 2);
   memcpy(&data[16], &channel->channel_own.credits, 2);
 
-  LOG_DBG("send_l2cap_conn_req: CID: %2d, MTU: %3d, MPS: %3d, credits: %2d\n",
+  LOG_DBG("send_l2cap_conn_req: CID: %2d, MTU: %3d, MPS: %3d, credits: %2d to ",
          channel->channel_own.cid, channel->channel_own.mtu, channel->channel_own.mps, channel->channel_own.credits);
+  LOG_DBG_LLADDR(&channel->peer_addr);
+  LOG_DBG("\n");
 
   packetbuf_copyfrom((void *)data, 18);
   packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &linkaddr_node_addr);
   packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &channel->peer_addr);
-  NETSTACK_RADIO.send(packetbuf_hdrptr(), packetbuf_totlen()); //TODO: suspect
+  NETSTACK_RADIO.send(packetbuf_hdrptr(), packetbuf_totlen());
 }
 /*---------------------------------------------------------------------------*/
 static uint16_t
@@ -568,12 +569,9 @@ input(void)
         send_l2cap_credit(channel, credits);
       }
     }
-  } else if (frame_type == FRAME_BLE_CONNECTION_EVENT) {
+  } else if (frame_type == FRAME_BLE_CONNECTION_EVENT) {  
     channel = &l2cap_channels[l2cap_channel_count];
     linkaddr_copy(&channel->peer_addr, packetbuf_addr(PACKETBUF_ADDR_SENDER));
-    LOG_DBG("l2cap: input: sending L2CAP conn_req: cid: %2d, addr: (placeholder)\n", channel->channel_own.cid);
-    //LOG_DBG("(placeholder)"); //LOG_DBG_6ADDR(&channel->peer_addr);
-    //LOG_DBG("\n");
     send_l2cap_conn_req(channel);
     l2cap_channel_count++;
   } else if(frame_type == FRAME_BLE_TX_EVENT) {
