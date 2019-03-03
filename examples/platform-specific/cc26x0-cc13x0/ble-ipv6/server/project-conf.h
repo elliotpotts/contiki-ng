@@ -4,13 +4,13 @@
 #define ROM_BOOTLOADER_ENABLE                   1
 
 #define LOG_CONF_LEVEL_IPV6                     LOG_LEVEL_WARN
-#define LOG_CONF_LEVEL_RPL                      LOG_LEVEL_WARN
+#define LOG_CONF_LEVEL_RPL                      LOG_LEVEL_DBG
 #define LOG_CONF_LEVEL_6LOWPAN                  LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_TCPIP                    LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_MAC                      LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_FRAMER                   LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_WARN
-#define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_WARN
 
 #define RTIMER_CONF_MULTIPLE_ACCESS             1
 
@@ -20,8 +20,6 @@
 
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
-
-#define RTIMER_CONF_MULTIPLE_ACCESS             1
 
 /* network layer settings */
 #define UIP_CONF_ROUTER                         1

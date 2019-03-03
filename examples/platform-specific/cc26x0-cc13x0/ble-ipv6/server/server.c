@@ -40,7 +40,7 @@
 #include "os/net/ipv6/uip.h"
 #include "os/net/ipv6/uip-udp-packet.h"
 #include "sys/log.h"
-#define LOG_MODULE "user"
+#define LOG_MODULE "MAIN"
 #define LOG_LEVEL LOG_LEVEL_MAIN
 
 #include <string.h>

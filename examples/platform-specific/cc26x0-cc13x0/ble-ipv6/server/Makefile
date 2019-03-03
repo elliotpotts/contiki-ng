@@ -3,7 +3,7 @@ all: $(CONTIKI_PROJECT)
 CONTIKI = ../../../../..
 
 PLATFORMS_ONLY = cc26x0-cc13x0
-BOARDS_ONLY = launchpad/cc2650
+BOARDS_ONLY = launchpad/cc2650 launchpad/cc2640r2
 
 MAKE_MAC = MAKE_MAC_BLE
 MAKE_NET = MAKE_NET_IPV6
