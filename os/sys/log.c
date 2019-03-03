@@ -63,6 +63,7 @@ int curr_log_level_framer = LOG_CONF_LEVEL_FRAMER;
 int curr_log_level_6top = LOG_CONF_LEVEL_6TOP;
 int curr_log_level_coap = LOG_CONF_LEVEL_COAP;
 int curr_log_level_lwm2m = LOG_CONF_LEVEL_LWM2M;
+int curr_log_level_radio = LOG_CONF_LEVEL_RADIO;
 int curr_log_level_main = LOG_CONF_LEVEL_MAIN;
 
 struct log_module all_modules[] = {
@@ -76,6 +77,7 @@ struct log_module all_modules[] = {
   {"6top", &curr_log_level_6top, LOG_CONF_LEVEL_6TOP},
   {"coap", &curr_log_level_coap, LOG_CONF_LEVEL_COAP},
   {"lwm2m", &curr_log_level_lwm2m, LOG_CONF_LEVEL_LWM2M},
+  {"radio", &curr_log_level_radio, LOG_CONF_LEVEL_RADIO},
   {"main", &curr_log_level_main, LOG_CONF_LEVEL_MAIN},
   {NULL, NULL, 0},
 };

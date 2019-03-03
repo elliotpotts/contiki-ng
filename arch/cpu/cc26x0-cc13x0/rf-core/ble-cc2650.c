@@ -46,7 +46,7 @@
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
 #define LOG_MODULE "RADIO"
-#define LOG_LEVEL LOG_LEVEL_MAIN
+#define LOG_LEVEL LOG_LEVEL_RADIO
 /*---------------------------------------------------------------------------*/
 static uint16_t adv_interval;
 static ble_adv_type_t adv_type;

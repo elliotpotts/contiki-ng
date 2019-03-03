@@ -71,7 +71,7 @@
 /*---------------------------------------------------------------------------*/
 #include "sys/log.h"
 #define LOG_MODULE "BLE-HAL"
-#define LOG_LEVEL LOG_LEVEL_MAIN
+#define LOG_LEVEL LOG_LEVEL_RADIO
 /*---------------------------------------------------------------------------*/
 #define CMD_GET_STATUS(X)       (((rfc_radioOp_t *)X)->status)
 #define RX_ENTRY_STATUS(X)      (((rfc_dataEntry_t *)X)->status)
