@@ -21,6 +21,8 @@
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
 
+#define RPL_CONF_WITH_PROBING                   0
+
 /* network layer settings */
 #define UIP_CONF_ROUTER                         0
 #define UIP_CONF_ND6_SEND_NA                    1
