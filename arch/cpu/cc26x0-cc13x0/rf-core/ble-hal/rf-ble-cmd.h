@@ -234,4 +234,10 @@ void rf_ble_cmd_create_master_params(uint8_t *params, dataQueue_t *rx_queue,
  */
 unsigned short rf_ble_cmd_add_data_queue_entry(dataQueue_t *q, uint8_t *e);
 
+#include "rf_ble_cmd.h"
+
+void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q);
+
+void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params, uint8_t *output, uint32_t start_time);
+
 #endif /* RF_BLE_CMD_H_ */

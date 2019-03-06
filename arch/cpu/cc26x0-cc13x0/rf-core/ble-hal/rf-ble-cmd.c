@@ -53,6 +53,14 @@
 /*---------------------------------------------------------------------------*/
 #define CMD_GET_STATUS(X)         (((rfc_radioOp_t *)X)->status)
 /*---------------------------------------------------------------------------*/
+
+#define SCAN_FILTER_ACCEPT_ALL 0
+#define SCAN_FILTER_ACCEPT_WHITELISTED 
+#define SCAN_MODE_PASSIVE 0
+#define SCAN_MODE_ACTIVE 1
+#define ADDR_TYPE_PUBLIC 0
+#define ADDR_TYPE_RANDOM 1
+
 /* values for a selection of available TX powers (values from SmartRF Studio) */
 /*static uint16_t tx_power = 0x9330;						/ * +5 dBm * / */
 static uint16_t tx_power = 0x3161;                /*  0 dBm */
@@ -370,6 +378,64 @@ rf_ble_cmd_create_slave_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params,
   c->pOutput = (rfc_bleMasterSlaveOutput_t *)output;
 #endif
 }
+
+void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q) {
+  memset(params, 0, sizeof(rfc_bleScannerPar_t));
+  params->rxConfig.bAutoFlushIgnored = 0;
+  params->rxConfig.bAutoFlushCrcErr = 0;
+  params->rxConfig.bAutoFlushEmpty = 1;
+  params->rxConfig.bIncludeLenByte = 0;
+  params->rxConfig.bIncludeCrc = 0;
+  params->rxConfig.bAppendRssi = 0;
+  params->rxConfig.bAppendStatus = 0;
+  params->rxConfig.bAppendTimestamp = 0;
+  params->scanConfig.scanFilterPolicy = SCAN_FILTER_ACCEPT_ALL;
+  params->scanConfig.bActiveScan = SCAN_MODE_PASSIVE;
+  params->scanConfig.deviceAddrType = ADDR_TYPE_PUBLIC;
+  params->scanConfig.bStrictLenFilter = 0;
+  params->scanConfig.bAutoWlIgnore = 0;
+  params->scanConfig.bEndOnRpt = 0;
+  params->scanConfig.rpaMode = 0;
+  params->randomState = 0;
+  params->backoffCount = 4;
+  params->backoffPar.logUpperLimit = 6;
+  params->backoffPar.bLastSucceeded = 0;
+  params->backoffPar.bLastFailed = 0;
+  params->scanReqLen = 0;
+  params->pScanReqData = 0;
+  params->pDeviceAddress = 0;
+  params->pWhiteList = 0;
+  params->timeoutTrigger.triggerType = 0;
+  params->timeoutTrigger.bEnaCmd = 0;
+  params->timeoutTrigger.triggerNo = 0;
+  params->timeoutTrigger.pastTrig = 0;
+  params->endTrigger.triggerType = 0;
+  params->endTrigger.bEnaCmd = 0;
+  params->endTrigger.triggerNo = 0;
+  params->endTrigger.pastTrig = 0;
+  params->timeoutTime = 0;
+  params->endTime = 0;
+}
+
+void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params, uint8_t *output, uint32_t start_time) {
+  rfc_CMD_BLE_SCANNER_t *c = (rfc_CMD_BLE_SCANNER_t *)cmd;
+  memset(c, 0, sizeof(rfc_CMD_BLE_SCANNER_t));
+  c->commandNo = CMD_BLE_SCANNER;
+  c->pNextOp = NULL;
+  c->startTime = start_time;
+  c->startTrigger.triggerType = TRIG_ABSTIME;
+  c->startTrigger.bEnaCmd = 0;
+  c->startTrigger.triggerNo = 0;
+  c->startTrigger.pastTrig = 0;
+  c->condition.rule = COND_NEVER;
+  c->condition.nSkip = 0;
+  c->channel = channel;
+  c->whitening.init = 0;
+  c->whitening.bOverride = 0;
+  c->pParams = (rfc_bleScannerPar_t *)params;
+  c->pOutput = (rfc_bleScannerOutput_t *)output;
+}
+
 /*---------------------------------------------------------------------------*/
 void
 rf_ble_cmd_create_slave_params(uint8_t *params, dataQueue_t *rx_queue,
