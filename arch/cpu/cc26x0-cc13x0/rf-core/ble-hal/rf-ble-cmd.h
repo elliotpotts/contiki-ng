@@ -238,6 +238,6 @@ unsigned short rf_ble_cmd_add_data_queue_entry(dataQueue_t *q, uint8_t *e);
 
 void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q);
 
-void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params, uint8_t *output, uint32_t start_time);
+void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, rfc_bleScannerPar_t *params, rfc_bleScannerOutput_t *output, uint32_t start_time);
 
 #endif /* RF_BLE_CMD_H_ */

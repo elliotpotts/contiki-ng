@@ -381,14 +381,15 @@ rf_ble_cmd_create_slave_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params,
 
 void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q) {
   memset(params, 0, sizeof(rfc_bleScannerPar_t));
+  params->pRxQ = rx_q;
   params->rxConfig.bAutoFlushIgnored = 0;
   params->rxConfig.bAutoFlushCrcErr = 0;
-  params->rxConfig.bAutoFlushEmpty = 1;
-  params->rxConfig.bIncludeLenByte = 0;
+  params->rxConfig.bAutoFlushEmpty = 0;
+  params->rxConfig.bIncludeLenByte = 1;
   params->rxConfig.bIncludeCrc = 0;
-  params->rxConfig.bAppendRssi = 0;
-  params->rxConfig.bAppendStatus = 0;
-  params->rxConfig.bAppendTimestamp = 0;
+  params->rxConfig.bAppendRssi = 1;
+  params->rxConfig.bAppendStatus = 1;
+  params->rxConfig.bAppendTimestamp = 1;
   params->scanConfig.scanFilterPolicy = SCAN_FILTER_ACCEPT_ALL;
   params->scanConfig.bActiveScan = SCAN_MODE_PASSIVE;
   params->scanConfig.deviceAddrType = ADDR_TYPE_PUBLIC;
@@ -417,23 +418,25 @@ void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *
   params->endTime = 0;
 }
 
-void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params, uint8_t *output, uint32_t start_time) {
+void rf_ble_cmd_create_scanner_cmd(uint8_t *cmd, uint8_t channel, rfc_bleScannerPar_t *params, rfc_bleScannerOutput_t *output, uint32_t start_time) {
   rfc_CMD_BLE_SCANNER_t *c = (rfc_CMD_BLE_SCANNER_t *)cmd;
   memset(c, 0, sizeof(rfc_CMD_BLE_SCANNER_t));
   c->commandNo = CMD_BLE_SCANNER;
+  c->status = 0;
   c->pNextOp = NULL;
-  c->startTime = start_time;
-  c->startTrigger.triggerType = TRIG_ABSTIME;
+  c->startTime = 0;
+  c->startTrigger.triggerType = TRIG_NOW;
   c->startTrigger.bEnaCmd = 0;
   c->startTrigger.triggerNo = 0;
   c->startTrigger.pastTrig = 0;
   c->condition.rule = COND_NEVER;
   c->condition.nSkip = 0;
+  
   c->channel = channel;
   c->whitening.init = 0;
   c->whitening.bOverride = 0;
-  c->pParams = (rfc_bleScannerPar_t *)params;
-  c->pOutput = (rfc_bleScannerOutput_t *)output;
+  c->pParams = params;
+  c->pOutput = output;
 }
 
 /*---------------------------------------------------------------------------*/
