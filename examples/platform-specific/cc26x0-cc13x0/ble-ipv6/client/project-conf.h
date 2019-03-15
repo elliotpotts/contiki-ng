@@ -9,7 +9,7 @@
 #define LOG_CONF_LEVEL_TCPIP                    LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_MAC                      LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_FRAMER                   LOG_LEVEL_WARN
-#define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_WARN
+#define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_DBG
 #define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_WARN
 
 #define RTIMER_CONF_MULTIPLE_ACCESS             0

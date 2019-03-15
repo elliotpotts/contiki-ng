@@ -55,7 +55,7 @@
 /*---------------------------------------------------------------------------*/
 
 #define SCAN_FILTER_ACCEPT_ALL 0
-#define SCAN_FILTER_ACCEPT_WHITELISTED 
+#define SCAN_FILTER_ACCEPT_WHITELISTED 1
 #define SCAN_MODE_PASSIVE 0
 #define SCAN_MODE_ACTIVE 1
 #define ADDR_TYPE_PUBLIC 0
@@ -382,10 +382,10 @@ rf_ble_cmd_create_slave_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params,
 void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q) {
   memset(params, 0, sizeof(rfc_bleScannerPar_t));
   params->pRxQ = rx_q;
-  params->rxConfig.bAutoFlushIgnored = 0;
-  params->rxConfig.bAutoFlushCrcErr = 0;
-  params->rxConfig.bAutoFlushEmpty = 0;
-  params->rxConfig.bIncludeLenByte = 1;
+  params->rxConfig.bAutoFlushIgnored = 1;
+  params->rxConfig.bAutoFlushCrcErr = 1;
+  params->rxConfig.bAutoFlushEmpty = 1;
+  params->rxConfig.bIncludeLenByte = 0;
   params->rxConfig.bIncludeCrc = 0;
   params->rxConfig.bAppendRssi = 1;
   params->rxConfig.bAppendStatus = 1;
@@ -397,20 +397,20 @@ void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *
   params->scanConfig.bAutoWlIgnore = 0;
   params->scanConfig.bEndOnRpt = 0;
   params->scanConfig.rpaMode = 0;
-  params->randomState = 0;
-  params->backoffCount = 4;
-  params->backoffPar.logUpperLimit = 6;
+  //params->randomState = ???; // leaving it uninitialised is the most random I can do for now ...
+  params->backoffCount = 1; //TODO: elliot: set these values to the values they had at the end of the previous scanning operation
+  params->backoffPar.logUpperLimit = 0;
   params->backoffPar.bLastSucceeded = 0;
   params->backoffPar.bLastFailed = 0;
   params->scanReqLen = 0;
-  params->pScanReqData = 0;
+  params->pScanReqData = NULL;
   params->pDeviceAddress = 0;
-  params->pWhiteList = 0;
-  params->timeoutTrigger.triggerType = 0;
+  params->pWhiteList = NULL;
+  params->timeoutTrigger.triggerType = TRIG_NEVER;
   params->timeoutTrigger.bEnaCmd = 0;
   params->timeoutTrigger.triggerNo = 0;
   params->timeoutTrigger.pastTrig = 0;
-  params->endTrigger.triggerType = 0;
+  params->endTrigger.triggerType = TRIG_NEVER;
   params->endTrigger.bEnaCmd = 0;
   params->endTrigger.triggerNo = 0;
   params->endTrigger.pastTrig = 0;
