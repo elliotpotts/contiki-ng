@@ -210,15 +210,18 @@ static ble_adv_param_t adv_param;
 static void advertising_event(struct rtimer *t, void *ptr);
 
 /* SCANNER data structures */
-#define SCAN_RX_BUFFERS_OVERHEAD       8
+//#define SCAN_RX_BUFFERS_OVERHEAD       8
 #define SCAN_RX_BUFFERS_DATA_LEN       60
-#define SCAN_RX_BUFFERS_LEN            (SCAN_RX_BUFFERS_OVERHEAD + SCAN_RX_BUFFERS_DATA_LEN)
+//#define SCAN_RX_BUFFERS_LEN            (SCAN_RX_BUFFERS_OVERHEAD + SCAN_RX_BUFFERS_DATA_LEN)
 #define SCAN_RX_BUFFERS_NUM            10
 #define SCAN_PREPROCESSING_TIME_TICKS  65
 
-/**
- * The structure of ble scanning parameters
- */
+typedef struct {
+  rfc_dataEntry_t entry;
+  uint8_t data[SCAN_RX_BUFFERS_DATA_LEN];
+} __attribute__ ((packed)) scan_data_entry;
+
+
 typedef struct {
   /* parameters */
   ble_scan_type_t type;
@@ -234,8 +237,8 @@ typedef struct {
   rfc_bleScannerPar_t param_buf;
   rfc_bleScannerOutput_t output;
   dataQueue_t rx_queue;
-  uint8_t rx_buffers[SCAN_RX_BUFFERS_NUM][SCAN_RX_BUFFERS_LEN];
-  rfc_dataEntry_t *rx_queue_current;
+  scan_data_entry rx_buffers[SCAN_RX_BUFFERS_NUM];
+  scan_data_entry *rx_queue_current;
 } ble_scan_params_t;
 static ble_scan_params_t scan_params;
 
@@ -393,19 +396,19 @@ setup_buffers(void)
   uint8_t i;
   rfc_dataEntry_t *entry;
 
-  /* setup scanner RX buffer (circular buffer) */
-  memset(&scan_params, 0x00, sizeof(ble_scan_params_t));
-  //memset(&scan_params.rx_queue, 0x00, sizeof(scan_params.rx_queue));
-  scan_params.rx_queue.pCurrEntry = scan_params.rx_buffers[0];
-  scan_params.rx_queue.pLastEntry = NULL;
-  scan_params.rx_queue_current = (rfc_dataEntry_t *)scan_params.rx_buffers[0];
-  for(int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    //memset(&scan_params.rx_buffers[i], 0x00, SCAN_RX_BUFFERS_LEN);   
-    entry = (rfc_dataEntry_t *)scan_params.rx_buffers[i];
-    entry->pNextEntry = scan_params.rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
-    entry->config.lenSz = 1;
-    entry->length = SCAN_RX_BUFFERS_DATA_LEN;
+  /* Setup scanner RX circular buffer */
+  memset(&scan_params, 0, sizeof(ble_scan_params_t));
+  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
+    rfc_dataEntry_t* e = &scan_params.rx_buffers[i].entry;
+    e->pNextEntry = (uint8_t*) &scan_params.rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
+    e->status = DATA_ENTRY_PENDING;
+    e->config.type = 0;
+    e->config.lenSz = 1;
+    e->length = SCAN_RX_BUFFERS_DATA_LEN;
   }
+  scan_params.rx_queue.pCurrEntry = (uint8_t*) &scan_params.rx_buffers[0].entry;
+  scan_params.rx_queue.pLastEntry = NULL;
+  scan_params.rx_queue_current = &scan_params.rx_buffers[0];
 
   /* setup advertisement RX buffer (circular buffer) */
   memset(&adv_param, 0x00, sizeof(ble_adv_param_t));
@@ -899,47 +902,43 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scan_params_t *param = (ble_scan_params_t *)userdata;
-  LOG_DBG("Scanned %u advertising packets\n", param->output.nRxAdvOk);
-  while (RX_ENTRY_STATUS(param->rx_queue_current) == DATA_ENTRY_FINISHED) {
-    uint8_t *rx_data = (uint8_t*) &param->rx_queue_current + 1;
-    uint8_t payload_len = *rx_data++;
+  
+  while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
+    uint8_t *rx_data = param->rx_queue_current->data;
+    uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */ - 1 /* bAppendStatus = 1 */;
     uint8_t header = *rx_data++;
-    uint8_t *rx_data_end = rx_data + payload_len;
-    LOG_DBG("Scanned adv %u: \n", header & 0b1111);
-    LOG_DBG("  payload: ");
-    while (rx_data < rx_data_end) {
-      printf("%.2u ", *rx_data++);
-      /*
-      // Parse GAP data (Vol 3. Part C. 11.1)
-      uint8_t ad_len = *rx_data++;
-      uint8_t ad_type = *rx_data++;
-      LOG_DBG("    ad_type: %x\n", ad_type);
-      rx_data += ad_len;*/
-      /*switch (ad_type) {
-      case 0x01:
-	LOG_DBG("    Flags: \n");
-//	rx_data += ad_len;
-//	break;
-      default:
-	LOG_DBG("    Unkown AD type, skipping.\n");
-	rx_data += ad_len;
-      }*/
+    uint8_t *payload = rx_data;
+    uint8_t *payload_end = payload + payload_len;
+    rfc_bleRxStatus_t status;
+    memcpy(&status, payload_end, sizeof(rfc_bleRxStatus_t));
+
+    uint8_t pdu_type = header & 0b00001111;
+    if (!status.status.bIgnore && !status.status.bCrcErr) {
+      if (pdu_type == 0) {
+	LOG_DBG("Scanned ADV_IND ");
+	uint8_t adv_a[6];
+	for(int i = 0; i < 6; i++) adv_a[5 - i] = *payload++;
+	printf("from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
+	while (payload < payload_end) {
+	  uint8_t ad_len = *payload++;
+	  uint8_t ad_type = *payload++;
+	  payload += ad_len - 1;
+	  LOG_DBG("  ad_type: %.2x      bytes left: %u\n", ad_type, payload_end - payload);
+	}
+      } else {
+	//LOG_DBG("Scanned other\n");
+      }
     }
-    printf("\n");
-    
+
     /* free current entry (clear BLE data length & reset status) */
-    ((rfc_dataEntry_t *) param->rx_queue_current)->length = 0;
-    RX_ENTRY_STATUS(param->rx_queue_current) = DATA_ENTRY_PENDING;
-    param->rx_queue_current = (rfc_dataEntry_t *) ((rfc_dataEntry_t *) param->rx_queue_current)->pNextEntry;
+    //param->rx_queue_current->entry.length = SCAN_RX_BUFFERS_DATA_LEN;
+    param->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
+    param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
   }
 
-  LOG_DBG("Status of cmd during scan: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
   if (CMD_GET_STATUS(param->cmd_buf) == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_DBG("Scan rx buffer is out of space!\n");
-    //set_scan_enable(0, 0);
-    //set_scan_enable(1, 0);
   } else {
-    LOG_DBG("Rescheduling scan_rx\n");
     rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, param);
   }
 }

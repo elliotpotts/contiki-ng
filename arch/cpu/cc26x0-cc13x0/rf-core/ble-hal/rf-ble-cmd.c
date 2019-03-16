@@ -382,14 +382,14 @@ rf_ble_cmd_create_slave_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params,
 void rf_ble_cmd_create_scanner_params(rfc_bleScannerPar_t *params, dataQueue_t *rx_q) {
   memset(params, 0, sizeof(rfc_bleScannerPar_t));
   params->pRxQ = rx_q;
-  params->rxConfig.bAutoFlushIgnored = 1;
-  params->rxConfig.bAutoFlushCrcErr = 1;
-  params->rxConfig.bAutoFlushEmpty = 1;
+  params->rxConfig.bAutoFlushIgnored = 0;
+  params->rxConfig.bAutoFlushCrcErr = 0;
+  params->rxConfig.bAutoFlushEmpty = 0;
   params->rxConfig.bIncludeLenByte = 0;
   params->rxConfig.bIncludeCrc = 0;
-  params->rxConfig.bAppendRssi = 1;
+  params->rxConfig.bAppendRssi = 0;
   params->rxConfig.bAppendStatus = 1;
-  params->rxConfig.bAppendTimestamp = 1;
+  params->rxConfig.bAppendTimestamp = 0;
   params->scanConfig.scanFilterPolicy = SCAN_FILTER_ACCEPT_ALL;
   params->scanConfig.bActiveScan = SCAN_MODE_PASSIVE;
   params->scanConfig.deviceAddrType = ADDR_TYPE_PUBLIC;
