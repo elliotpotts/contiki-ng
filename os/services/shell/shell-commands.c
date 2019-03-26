@@ -834,7 +834,8 @@ static PT_THREAD(cmd_ble_addr(struct pt *pt, shell_output_func output, char *arg
 
 static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args)) {
   PT_BEGIN(pt);
-  ble_hal.adv_ext(NULL, (uint8_t*)args, strlen(args));
+  uint8_t to_addr[BLE_ADDR_SIZE] = {0x54, 0x6C, 0x0E, 0x9B, 0x63, 0x53};
+  ble_hal.adv_ext(to_addr, (uint8_t*)args, strlen(args));
   PT_END(pt);
 }
 

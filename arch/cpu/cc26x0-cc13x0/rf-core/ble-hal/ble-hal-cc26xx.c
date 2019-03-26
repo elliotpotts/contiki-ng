@@ -65,6 +65,14 @@
 #include "inc/hw_types.h"
 #include "inc/hw_rfc_dbell.h"
 
+#define BLE5_ADV_EXT_HDR_FLAG_ADV_A     (1 << 0)
+#define BLE5_ADV_EXT_HDR_FLAG_TGT_A     (1 << 1)
+
+#define BLE5_ADV_EXT_HDR_FLAG_ADI       (1 << 3)
+#define BLE5_ADV_EXT_HDR_FLAG_AUX_PTR   (1 << 4)
+#define BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO (1 << 5)
+#define BLE5_ADV_EXT_HDR_FLAG_TX_POWER  (1 << 6)
+
 #include <string.h>
 
 const char* status_name(unsigned status) {
@@ -605,26 +613,39 @@ read_buffer_size(unsigned int *buf_len, unsigned int *num_buf)
   return BLE_RESULT_OK;
 }
 
-static char lorem[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas vitae sagittis lectus. Sed eu nulla vulputate, euismod libero eget, lobortis tellus. Phasellus ultricies metus odio, ornare convallis quam tristique vitae. Curabitur a rutrum tellus nullam. ";
+ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
+  // max pdu size = 255
+  // ext header size = 1
+  //   +- flags = 1
+  //   +- AdvA  = 6
+  //   +- TgtA  = 6
+  int header_len = 1 + 6 + (tgt_bd_addr ? 6 : 0);
+  int payload_len = header_len + adv_data_len;
+  if (payload_len > 255) {
+    LOG_ERR("attempt to send adv_ext_ind payload of %d, max is 255.\n", adv_data_len);
+    return BLE_RESULT_ERROR;
+  }
 
-ble_result_t adv_ext(uint8_t *tgt_a, const uint8_t *data, unsigned len) {
+  LOG_DBG("tgt_a  %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
+	  ,tgt_bd_addr[0], tgt_bd_addr[1], tgt_bd_addr[2], tgt_bd_addr[3], tgt_bd_addr[4], tgt_bd_addr[5]);
   rfc_ble5ExtAdvEntry_t adv_pkt = {
     .extHdrInfo = {
-      .length = 1 + 6, //flags + AdvA
+      .length = header_len,
       .advMode = 0,
     },
-    .extHdrFlags = 1, //AdvA
+    .extHdrFlags = BLE5_ADV_EXT_HDR_FLAG_ADV_A
+                 | (tgt_bd_addr ? BLE5_ADV_EXT_HDR_FLAG_TGT_A : 0),
     .extHdrConfig = {
       .bSkipAdvA = 1
     },
-    .advDataLen = 247,
-    .pAdvData = (uint8_t*)lorem //adv_data
+    .advDataLen = adv_data_len,
+    .pExtHeader = tgt_bd_addr ? (uint8_t*) tgt_bd_addr : NULL,
+    .pAdvData = (uint8_t*) adv_data //TODO: WARNING: double check that this is allowed! spec says only system CPU writes
   };
+  LOG_DBG("flags: %x\n", adv_pkt.extHdrFlags);
   
-  // device address
-  uint8_t my_addr[6];// = {1, 2, 3, 4, 5, 6, 7, 8};
+  uint8_t my_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(my_addr);
-  LOG_DBG("advertising from: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", my_addr[0], my_addr[1], my_addr[2], my_addr[3], my_addr[4], my_addr[5]);
 
   // Construct parameters and command
   rfc_ble5AdvExtPar_t params = {
@@ -958,6 +979,9 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
 }
 /*---------------------------------------------------------------------------*/
 #if MAC_CONF_WITH_BLE_CL
+
+#define BLE5_ADV_DATA_SIZE_MAX 255
+
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scanner_t *param = (ble_scanner_t *)userdata;
@@ -987,20 +1011,59 @@ static void scan_rx(struct rtimer *t, void *userdata) {
       /* } */
       if (pdu_type == 7) {
 	uint8_t ext_header_len = *payload++;
+	uint8_t* ext_header_end = payload + ext_header_len;
+	bool adv_a_present = 0;
+	char adv_a[BLE_ADDR_SIZE];
+	
+	bool tgt_a_present = 0;
+	char tgt_a[BLE_ADDR_SIZE];
+	
+	bool adi_present = 0;
+	bool aux_ptr_present = 0;
+	bool sync_info_present = 0;
+	bool tx_power_present = 0;
+	LOG_DBG("Adv with len %x\n", ext_header_len);
 	if (ext_header_len > 0) {
 	  uint8_t ext_header_flags = *payload++;
-	  if (ext_header_flags & 1) {
-	    uint8_t adv_a[6];
-	    for (int i = 0; i < 6; i++) adv_a[i] = *payload++;
-	    LOG_DBG("Scanned ADV_EXT_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X with %u bytes\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5], payload_end - payload);
+	  
+	  adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
+	  if (adv_a_present) {
+	    for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
 	  }
+
+	  tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
+	  if (tgt_a_present) {
+	    for (int i = 0; i < BLE_ADDR_SIZE; i++) tgt_a[i] = *payload++;
+	  }
+	  
+	  adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
+	  if (adi_present) payload += 16;
+	  
+	  aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
+	  if (aux_ptr_present) payload += 24;
+	  
+	  sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
+	  if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
+	    
+	  tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
+	  if (tx_power_present) payload += 1;
+
+	  payload = ext_header_end;
 	}
-	char adv_data[255];
+	char adv_data[BLE5_ADV_DATA_SIZE_MAX];
 	char* adv_data_out = adv_data;
 	while (payload < payload_end) {
 	  *adv_data_out++ = *payload++;
 	}
-	LOG_DBG("  %s\n", adv_data);
+	*adv_data_out++ = '\0';
+
+	if (adv_a_present && tgt_a_present) {
+	  LOG_DBG("Scanned %u bytes from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X directed to %.2X:%.2X:%.2X:%.2X:%.2X:%.2X: \n  %s\n"
+		  ,payload_end - payload
+		  ,adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]
+		  ,tgt_a[0], tgt_a[1], tgt_a[2], tgt_a[3], tgt_a[4], tgt_a[5]
+		  ,adv_data);
+	}
       }
     }
 
@@ -1021,6 +1084,7 @@ ble_result_t set_scan_param(ble_scan_type_t type, unsigned int scan_interval, un
   return BLE_RESULT_OK;
 }
 
+uint8_t my_addr[BLE_ADDR_SIZE];
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
   if(enable && !scanner.scanning) {
     LOG_DBG("enabling scanning\n");
@@ -1028,15 +1092,23 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
       LOG_ERR("scanner event: could not enable rf core\n");
       return BLE_RESULT_ERROR;
     }
-
+    
+    read_bd_addr(my_addr);
+    LOG_DBG("scanning with: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", my_addr[0], my_addr[1], my_addr[2], my_addr[3], my_addr[4], my_addr[5]);
+    
     scanner.params = (rfc_ble5ScannerPar_t) {
       .pRxQ = &scanner.rx_queue,
       .rxConfig = {
 	.bAutoFlushIgnored = 1,
-	.bAutoFlushCrcErr = 0,
+	.bAutoFlushCrcErr = 1,
 	.bAutoFlushEmpty = 1,
 	.bAppendStatus = 1
+	//.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
       },
+      .scanConfig = {
+	.bStrictLenFilter = 1
+      },
+      .pDeviceAddress = (uint16_t*) my_addr, // will be checked against incomding tgt addr
       .timeoutTrigger = {
 	.triggerType = TRIG_NEVER
       },
