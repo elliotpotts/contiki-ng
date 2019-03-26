@@ -57,6 +57,9 @@
 #include "rf_ble_cmd.h"
 #include "lib/random.h"
 
+#include "rf-ble-cmd.h"
+#include "rf_ble_cmd.h"
+
 #include "ioc.h"
 #include "ti-lib.h"
 #include "inc/hw_types.h"
@@ -133,11 +136,9 @@ const char* status_name(unsigned status) {
 static uint8_t
 request(void)
 {
-  LOG_DBG("just for LPM lol!\n");
   if(rf_core_is_accessible()) {
     return LPM_MODE_SLEEP;
   }
-
   return LPM_MODE_MAX_SUPPORTED;
 }
 /*---------------------------------------------------------------------------*/
@@ -223,24 +224,19 @@ typedef struct {
 
 
 typedef struct {
-  /* parameters */
-  ble_scan_type_t type;
-  unsigned int scan_interval;
-  unsigned int scan_window;
-  ble_addr_type_t own_addr_type;
-  /* state */
-  uint8_t scanning;
+  bool scanning;
   rtimer_clock_t scan_start;
   struct rtimer timer;
-  /* utility */
-  uint8_t cmd_buf[CMD_BUFFER_SIZE];
-  rfc_bleScannerPar_t param_buf;
-  rfc_bleScannerOutput_t output;
+  /* data */
   dataQueue_t rx_queue;
   scan_data_entry rx_buffers[SCAN_RX_BUFFERS_NUM];
   scan_data_entry *rx_queue_current;
-} ble_scan_params_t;
-static ble_scan_params_t scan_params;
+  /* control */
+  rfc_ble5ScannerPar_t params;
+  rfc_ble5ScanInitOutput_t output;
+  rfc_CMD_BLE5_SCANNER_t cmd;
+} ble_scanner_t;
+static ble_scanner_t scanner;
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -401,18 +397,18 @@ setup_buffers(void)
 
   #if MAC_CONF_WITH_BLE_CL
   /* Setup scanner RX circular buffer */
-  memset(&scan_params, 0, sizeof(ble_scan_params_t));
+  memset(&scanner, 0, sizeof(ble_scanner_t));
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    rfc_dataEntry_t* e = &scan_params.rx_buffers[i].entry;
-    e->pNextEntry = (uint8_t*) &scan_params.rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
+    rfc_dataEntry_t* e = &scanner.rx_buffers[i].entry;
+    e->pNextEntry = (uint8_t*) &scanner.rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
     e->status = DATA_ENTRY_PENDING;
     e->config.type = 0;
     e->config.lenSz = 1;
     e->length = SCAN_RX_BUFFERS_DATA_LEN;
   }
-  scan_params.rx_queue.pCurrEntry = (uint8_t*) &scan_params.rx_buffers[0].entry;
-  scan_params.rx_queue.pLastEntry = NULL;
-  scan_params.rx_queue_current = &scan_params.rx_buffers[0];
+  scanner.rx_queue.pCurrEntry = (uint8_t*) &scanner.rx_buffers[0].entry;
+  scanner.rx_queue.pLastEntry = NULL;
+  scanner.rx_queue_current = &scanner.rx_buffers[0];
   #endif
 
   /* setup advertisement RX buffer (circular buffer) */
@@ -571,7 +567,7 @@ reset(void)
 {
   LOG_INFO("maximum connections: %4d\n", BLE_MODE_MAX_CONNECTIONS);
   LOG_INFO("max. packet length:  %4d\n", BLE_MODE_CONN_MAX_PACKET_SIZE);
-  //lpm_register_module(&cc26xx_ble_lpm_module);
+  lpm_register_module(&cc26xx_ble_lpm_module);
   rf_core_set_modesel();
   setup_buffers();
   if(on() != BLE_RESULT_OK) {
@@ -609,12 +605,9 @@ read_buffer_size(unsigned int *buf_len, unsigned int *num_buf)
   return BLE_RESULT_OK;
 }
 
-#include "rf-ble-cmd.h"
-#include "rf_ble_cmd.h"
 static char lorem[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas vitae sagittis lectus. Sed eu nulla vulputate, euismod libero eget, lobortis tellus. Phasellus ultricies metus odio, ornare convallis quam tristique vitae. Curabitur a rutrum tellus nullam. ";
 
 ble_result_t adv_ext(uint8_t *tgt_a, const uint8_t *data, unsigned len) {
-  uint8_t adv_data[] = {1, 2, 3, 4, 5};
   rfc_ble5ExtAdvEntry_t adv_pkt = {
     .extHdrInfo = {
       .length = 1 + 6, //flags + AdvA
@@ -963,7 +956,7 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
 #if MAC_CONF_WITH_BLE_CL
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 static void scan_rx(struct rtimer *t, void *userdata) {
-  ble_scan_params_t *param = (ble_scan_params_t *)userdata;
+  ble_scanner_t *param = (ble_scanner_t *)userdata;
   
   while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
     uint8_t *rx_data = param->rx_queue_current->data;
@@ -976,16 +969,19 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 
     uint8_t pdu_type = header & 0b00001111;
     if (!status.status.bIgnore && !status.status.bCrcErr) {
-      if (pdu_type == 0) {
-	uint8_t adv_a[6];
-	for(int i = 0; i < 6; i++) adv_a[5 - i] = *payload++;
-	LOG_DBG("Scanned ADV_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
-	while (payload < payload_end) {
-	  uint8_t ad_len = *payload++;
-	  uint8_t ad_type = *payload++;
-	  payload += ad_len - 1;
-	  LOG_DBG("  ad_type: %.2x      bytes left: %u\n", ad_type, payload_end - payload);
-	}
+      /* if (pdu_type == 0) { */
+      /* 	uint8_t adv_a[6]; */
+      /* 	for(int i = 0; i < 6; i++) adv_a[5 - i] = *payload++; */
+      /* 	LOG_DBG("Scanned ADV_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]); */
+      /* 	while (payload < payload_end) { */
+      /* 	  uint8_t ad_len = *payload++; */
+      /* 	  uint8_t ad_type = *payload++; */
+      /* 	  payload += ad_len - 1; */
+      /* 	  LOG_DBG("  ad_type: %.2x      bytes left: %u\n", ad_type, payload_end - payload); */
+      /* 	} */
+      /* } */
+      if (pdu_type == 7) {
+	LOG_DBG("Scanned ADV_EXT_IND\n");
       }
     }
 
@@ -994,7 +990,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
     param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
   }
 
-  if (CMD_GET_STATUS(param->cmd_buf) == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
+  if (param->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_DBG("Scan rx buffer is out of space!\n");
   } else {
     rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, param);
@@ -1002,41 +998,63 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 }
 
 ble_result_t set_scan_param(ble_scan_type_t type, unsigned int scan_interval, unsigned int scan_window, ble_addr_type_t own_addr_type) {
-  scan_params.type = type;
-  scan_params.scan_interval = scan_interval;
-  scan_params.scan_window = scan_window;
-  scan_params.own_addr_type = own_addr_type;
+  //TODO: Elliot: implement scan parameter setting
   return BLE_RESULT_OK;
 }
 
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
-  if(enable && !scan_params.scanning) {
+  if(enable && !scanner.scanning) {
     LOG_DBG("enabling scanning\n");
     if(on() != BLE_RESULT_OK) {
       LOG_ERR("scanner event: could not enable rf core\n");
       return BLE_RESULT_ERROR;
     }
+
+    scanner.params = (rfc_ble5ScannerPar_t) {
+      .pRxQ = &scanner.rx_queue,
+      .rxConfig = {
+	.bAutoFlushIgnored = 1,
+	.bAutoFlushCrcErr = 0,
+	.bAutoFlushEmpty = 1,
+	.bAppendStatus = 1
+      },
+      .timeoutTrigger = {
+	.triggerType = TRIG_NEVER
+      },
+      .endTrigger = {
+	.triggerType = TRIG_NEVER
+      }
+    };
+    
+    memset(&scanner.output, 0, sizeof(scanner.output));
+
+    scanner.cmd = (rfc_CMD_BLE5_SCANNER_t) {
+      .commandNo = CMD_BLE5_SCANNER,
+      .startTrigger = {
+	.triggerType = TRIG_NOW
+      },
+      .condition = {
+	.rule = COND_NEVER // never execute 'next op'
+      },
+      .channel = 37,
+      .pParams = &scanner.params,
+      .pOutput = &scanner.output
+    };
   
-    rf_ble_cmd_create_scanner_params(&scan_params.param_buf, &scan_params.rx_queue);
-    rf_ble_cmd_create_scanner_cmd(scan_params.cmd_buf, BLE_ADV_CHANNEL_1,
-				  &scan_params.param_buf, &scan_params.output,
-				  ticks_to_unit(scan_params.scan_start, TIME_UNIT_RF_CORE));
-//    LOG_DBG("Status of cmd after create: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
     {
-      int status = rf_ble_cmd_send(scan_params.cmd_buf);
-//      LOG_DBG("  Status of cmd after send: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
+      unsigned status = rf_ble_cmd_send((uint8_t*)&scanner.cmd);
       if (status != RF_BLE_CMD_OK) {
-	LOG_ERR("scan event: couldn't send command 0x%04X\n", CMD_GET_STATUS(scan_params.cmd_buf));
+	LOG_ERR("scan event: couldn't send command 0x%04X\n", scanner.cmd.status);
       }
     }
     //off(); // not sure when to turn off?
 
     LOG_DBG("Scheduling rx check\n");
-    rtimer_set(&scan_params.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &scan_params);
+    rtimer_set(&scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &scanner);
     
     return BLE_RESULT_OK;
   } else if (!enable) {
-    scan_params.scanning = false;
+    scanner.scanning = false;
     LOG_DBG("STUB! (disabling scanning)\n");
     return BLE_RESULT_NOT_SUPPORTED;
   } else {

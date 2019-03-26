@@ -829,6 +829,12 @@ static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args
     ble_hal.adv_ext(NULL, (uint8_t*)args, strlen(args));
     PT_END(pt);
 }
+static PT_THREAD(cmd_ble_scan(struct pt *pt, shell_output_func output, char *args)) {
+    PT_BEGIN(pt);
+    ble_hal.set_scan_enable(1, 0);
+    PT_END(pt);
+}
+
 /*---------------------------------------------------------------------------*/
 void
 shell_commands_init(void)
@@ -911,6 +917,7 @@ const struct shell_command_t builtin_shell_commands[] = {
 #endif /* LLSEC802154_ENABLED */
 #if MAC_CONF_WITH_BLE_CL
   { "ble-adv",              cmd_ble_adv,              "'> ble-adv': Advertise a string" },
+  { "ble-scan",             cmd_ble_scan,             "'> ble-scan: Enable scanning"    },
 #endif
   { NULL, NULL, NULL },
 };
