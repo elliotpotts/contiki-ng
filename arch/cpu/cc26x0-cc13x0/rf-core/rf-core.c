@@ -61,7 +61,7 @@
 #include <stdio.h>
 #include <string.h>
 /*---------------------------------------------------------------------------*/
-#define DEBUG 0
+#define DEBUG 1
 #if DEBUG
 #define PRINTF(...) printf(__VA_ARGS__)
 #else
@@ -156,7 +156,7 @@ rf_core_send_cmd(uint32_t cmd, uint32_t *status)
   uint32_t timeout_count = 0;
   bool interrupts_disabled;
   bool is_radio_op = false;
-
+      
   /*
    * If cmd is 4-byte aligned, then it's either a radio OP or an immediate
    * command. Clear the status field if it's a radio OP
@@ -176,7 +176,6 @@ rf_core_send_cmd(uint32_t cmd, uint32_t *status)
    * we are accessing RF Core registers
    */
   interrupts_disabled = ti_lib_int_master_disable();
-
   if(!rf_core_is_accessible()) {
     PRINTF("rf_core_send_cmd: RF was off\n");
     if(!interrupts_disabled) {
@@ -721,7 +720,7 @@ rx_nok_isr(void)
 void
 cc26xx_rf_cpe1_isr(void)
 {
-  PRINTF("RF Error\n");
+  PRINTF("RF: ");
 
   if(!rf_core_is_accessible()) {
     if(rf_core_power_up() != RF_CORE_CMD_OK) {
@@ -729,8 +728,14 @@ cc26xx_rf_cpe1_isr(void)
     }
   }
 
+  if(HWREG(RFC_DBELL_NONBUF_BASE + RFC_DBELL_O_RFCPEIFG) & IRQ_INTERNAL_ERROR) {
+    PRINTF("INTERNAL_ERROR: the CPE has observed an unexpected error. A reset of the CPE is needed.\n");
+    /* Clear IRQ_INTERNAL_ERROR interrupt flag by writing zero to bit */
+    HWREG(RFC_DBELL_NONBUF_BASE + RFC_DBELL_O_RFCPEIFG) = ~IRQ_INTERNAL_ERROR; 
+  }
+
   if(HWREG(RFC_DBELL_NONBUF_BASE + RFC_DBELL_O_RFCPEIFG) & IRQ_RX_BUF_FULL) {
-    PRINTF("\nRF: BUF_FULL\n\n");
+    PRINTF("BUF_FULL\n\n");
     /* set a flag that the buffer is full*/
     rf_core_rx_is_full = true;
     /* make sure read_frame() will be called to make space in RX buffer */
@@ -738,9 +743,6 @@ cc26xx_rf_cpe1_isr(void)
     /* Clear the IRQ_RX_BUF_FULL interrupt flag by writing zero to bit */
     HWREG(RFC_DBELL_NONBUF_BASE + RFC_DBELL_O_RFCPEIFG) = ~(IRQ_RX_BUF_FULL);
   }
-
-  /* Clear INTERNAL_ERROR interrupt flag */
-  HWREG(RFC_DBELL_NONBUF_BASE + RFC_DBELL_O_RFCPEIFG) = 0x7FFFFFFF;
 }
 /*---------------------------------------------------------------------------*/
 void

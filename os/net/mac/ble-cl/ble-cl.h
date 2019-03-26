@@ -31,7 +31,7 @@
 /**
  * \file
  *    MAC layer that implements BLE using connectionless advertising
- *    packets to suppoer IPv6 over BLE (???)
+ *    packets to support IPv6 over BLE (???)
  *
  * \author
  *    Elliot Potts <ep15449@my.bristol.ac.uk>
@@ -43,21 +43,6 @@
 #include "contiki.h"
 #include "net/mac/mac.h"
 #include "dev/radio.h"
-/*---------------------------------------------------------------------------*/
-/* device name used for BLE advertisement */
-#ifdef BLE_CONF_DEVICE_NAME
-#define BLE_DEVICE_NAME BLE_CONF_DEVICE_NAME
-#else
-#define BLE_DEVICE_NAME "BLE device name"
-#endif
-
-/* BLE advertisement in milliseconds */
-#ifdef BLE_CONF_ADV_INTERVAL
-#define BLE_ADV_INTERVAL BLE_CONF_ADV_INTERVAL
-#else
-#define BLE_ADV_INTERVAL 50
-#endif
-
 
 extern const struct mac_driver ble_cl_driver;
 

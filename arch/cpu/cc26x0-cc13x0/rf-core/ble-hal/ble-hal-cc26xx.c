@@ -133,6 +133,7 @@ const char* status_name(unsigned status) {
 static uint8_t
 request(void)
 {
+  LOG_DBG("just for LPM lol!\n");
   if(rf_core_is_accessible()) {
     return LPM_MODE_SLEEP;
   }
@@ -210,10 +211,9 @@ static ble_adv_param_t adv_param;
 static void advertising_event(struct rtimer *t, void *ptr);
 
 /* SCANNER data structures */
-//#define SCAN_RX_BUFFERS_OVERHEAD       8
-#define SCAN_RX_BUFFERS_DATA_LEN       60
-//#define SCAN_RX_BUFFERS_LEN            (SCAN_RX_BUFFERS_OVERHEAD + SCAN_RX_BUFFERS_DATA_LEN)
-#define SCAN_RX_BUFFERS_NUM            10
+#if MAC_CONF_WITH_BLE_CL
+#define SCAN_RX_BUFFERS_DATA_LEN       200
+#define SCAN_RX_BUFFERS_NUM            6
 #define SCAN_PREPROCESSING_TIME_TICKS  65
 
 typedef struct {
@@ -241,6 +241,7 @@ typedef struct {
   scan_data_entry *rx_queue_current;
 } ble_scan_params_t;
 static ble_scan_params_t scan_params;
+#endif
 
 /*---------------------------------------------------------------------------*/
 /* CONNECTION data structures                          */
@@ -385,8 +386,10 @@ static void initiator_event(struct rtimer *t, void *ptr);
 PROCESS(ble_hal_conn_rx_process, "BLE/CC26xx connection RX process");
 process_event_t rx_data_event;
 
+#if MAC_CONF_WITH_BLE_CL
 PROCESS(ble_hal_scan_rx_process, "BLE/CC26xx scan RX process");
 process_event_t scan_rx_data_event;
+#endif
 /*---------------------------------------------------------------------------*/
 static void
 setup_buffers(void)
@@ -396,6 +399,7 @@ setup_buffers(void)
   uint8_t i;
   rfc_dataEntry_t *entry;
 
+  #if MAC_CONF_WITH_BLE_CL
   /* Setup scanner RX circular buffer */
   memset(&scan_params, 0, sizeof(ble_scan_params_t));
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
@@ -409,6 +413,7 @@ setup_buffers(void)
   scan_params.rx_queue.pCurrEntry = (uint8_t*) &scan_params.rx_buffers[0].entry;
   scan_params.rx_queue.pLastEntry = NULL;
   scan_params.rx_queue_current = &scan_params.rx_buffers[0];
+  #endif
 
   /* setup advertisement RX buffer (circular buffer) */
   memset(&adv_param, 0x00, sizeof(ble_adv_param_t));
@@ -566,7 +571,7 @@ reset(void)
 {
   LOG_INFO("maximum connections: %4d\n", BLE_MODE_MAX_CONNECTIONS);
   LOG_INFO("max. packet length:  %4d\n", BLE_MODE_CONN_MAX_PACKET_SIZE);
-  lpm_register_module(&cc26xx_ble_lpm_module);
+  //lpm_register_module(&cc26xx_ble_lpm_module);
   rf_core_set_modesel();
   setup_buffers();
   if(on() != BLE_RESULT_OK) {
@@ -603,7 +608,64 @@ read_buffer_size(unsigned int *buf_len, unsigned int *num_buf)
   memcpy(num_buf, &packet_buffers, 2);
   return BLE_RESULT_OK;
 }
-/*---------------------------------------------------------------------------*/
+
+#include "rf-ble-cmd.h"
+#include "rf_ble_cmd.h"
+static char lorem[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Maecenas vitae sagittis lectus. Sed eu nulla vulputate, euismod libero eget, lobortis tellus. Phasellus ultricies metus odio, ornare convallis quam tristique vitae. Curabitur a rutrum tellus nullam. ";
+
+ble_result_t adv_ext(uint8_t *tgt_a, const uint8_t *data, unsigned len) {
+  uint8_t adv_data[] = {1, 2, 3, 4, 5};
+  rfc_ble5ExtAdvEntry_t adv_pkt = {
+    .extHdrInfo = {
+      .length = 1 + 6, //flags + AdvA
+      .advMode = 0
+    },
+    .extHdrFlags = 1, //AdvA
+    .advDataLen = 40,
+    .pAdvData = (uint8_t*)lorem //adv_data
+  };
+  
+  // device address
+  uint8_t my_addr[20];
+  ble_addr_cpy_to(my_addr);
+
+  // Construct parameters and command
+  rfc_ble5AdvExtPar_t params = {
+    .pAdvPkt = (uint8_t*) &adv_pkt, //Pointer to extended advertising packet for the ADV_EXT_IND packet.
+    .auxPtrTargetTime = TRIG_NEVER,
+    .pDeviceAddress = (uint16_t*)&my_addr[0]
+  };
+  rfc_bleAdvOutput_t output = { 0 };
+  rfc_CMD_BLE5_ADV_EXT_t cmd = {
+    .commandNo = CMD_BLE5_ADV_EXT,
+    .startTrigger = {
+      .triggerType = TRIG_NOW,
+    },
+    .condition = {
+      .rule = COND_NEVER
+    },
+    .channel = 37,
+    .pParams = &params,
+    .pOutput = &output
+  };
+
+  // Submit command
+  LOG_DBG("turning on\n");
+  if(on() != BLE_RESULT_OK) {
+    LOG_DBG("could not enable rf core\n");
+    return BLE_RESULT_ERROR;
+  }
+  LOG_DBG("sending\n");
+  rf_ble_cmd_send((uint8_t*) &cmd);
+  LOG_DBG("sent. waiting...\n");
+  rf_ble_cmd_wait((uint8_t*) &cmd);
+  LOG_DBG("finished. turning off rf core...\n");
+  off();
+  LOG_DBG("finished.\n");
+  
+  return BLE_RESULT_OK;
+}
+
 static ble_result_t
 set_adv_param(unsigned int adv_int, ble_adv_type_t type,
               ble_addr_type_t own_type, unsigned short adv_map)
@@ -898,7 +960,7 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
   return BLE_RESULT_OK;
 }
 /*---------------------------------------------------------------------------*/
-#include <stdio.h>
+#if MAC_CONF_WITH_BLE_CL
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scan_params_t *param = (ble_scan_params_t *)userdata;
@@ -915,23 +977,19 @@ static void scan_rx(struct rtimer *t, void *userdata) {
     uint8_t pdu_type = header & 0b00001111;
     if (!status.status.bIgnore && !status.status.bCrcErr) {
       if (pdu_type == 0) {
-	LOG_DBG("Scanned ADV_IND ");
 	uint8_t adv_a[6];
 	for(int i = 0; i < 6; i++) adv_a[5 - i] = *payload++;
-	printf("from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
+	LOG_DBG("Scanned ADV_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
 	while (payload < payload_end) {
 	  uint8_t ad_len = *payload++;
 	  uint8_t ad_type = *payload++;
 	  payload += ad_len - 1;
 	  LOG_DBG("  ad_type: %.2x      bytes left: %u\n", ad_type, payload_end - payload);
 	}
-      } else {
-	//LOG_DBG("Scanned other\n");
       }
     }
 
     /* free current entry (clear BLE data length & reset status) */
-    //param->rx_queue_current->entry.length = SCAN_RX_BUFFERS_DATA_LEN;
     param->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
     param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
   }
@@ -963,10 +1021,10 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
     rf_ble_cmd_create_scanner_cmd(scan_params.cmd_buf, BLE_ADV_CHANNEL_1,
 				  &scan_params.param_buf, &scan_params.output,
 				  ticks_to_unit(scan_params.scan_start, TIME_UNIT_RF_CORE));
-    LOG_DBG("Status of cmd after create: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
+//    LOG_DBG("Status of cmd after create: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
     {
       int status = rf_ble_cmd_send(scan_params.cmd_buf);
-      LOG_DBG("  Status of cmd after send: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
+//      LOG_DBG("  Status of cmd after send: %s\n", status_name(CMD_GET_STATUS(scan_params.cmd_buf)));
       if (status != RF_BLE_CMD_OK) {
 	LOG_ERR("scan event: couldn't send command 0x%04X\n", CMD_GET_STATUS(scan_params.cmd_buf));
       }
@@ -986,6 +1044,14 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
     return BLE_RESULT_OK;
   }
 }
+#else
+ble_result_t set_scan_param(ble_scan_type_t one, unsigned int two, unsigned int three, ble_addr_type_t four) {
+    return BLE_RESULT_NOT_SUPPORTED;
+}
+ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
+    return BLE_RESULT_NOT_SUPPORTED;
+}
+#endif
 
 ble_result_t create_connection_cancel(void) {
     LOG_DBG("[stub] cancelling connection creation\n");
@@ -1007,6 +1073,7 @@ const struct ble_hal_driver ble_hal =
   reset,
   read_bd_addr,
   read_buffer_size,
+  adv_ext,
   set_adv_param,
   read_adv_channel_tx_power,
   set_adv_data,
@@ -1197,12 +1264,12 @@ initiator_event(struct rtimer *t, void *ptr)
   whitelist[0].conf.bEnable = 1;  /* enabled */
   whitelist[0].conf.addrType = 0; /* public */
   whitelist[0].conf.bWlIgn = 0; /* not ignored */
-  whitelist[0].addressHi = init->peer_addr[0] << 24
-                         | init->peer_addr[1] << 16
-                         | init->peer_addr[2] << 8
-                         | init->peer_addr[3];
-  whitelist[0].address = init->peer_addr[4] << 8
-                       | init->peer_addr[5];
+  whitelist[0].addressHi = 0x54 << 24
+                         | 0x6C << 16
+                         | 0x0E << 8
+                         | 0x9B;
+  whitelist[0].address = 0x63 << 8
+                       | 0x53;
 
   whitelist[1].size = 0;
   whitelist[1].conf.bEnable = 1;
@@ -1630,6 +1697,7 @@ PROCESS_THREAD(ble_hal_conn_rx_process, ev, data) {
   PROCESS_END();
 }
 
+#if MAC_CONF_WITH_BLE_CL
 PROCESS_THREAD(ble_hal_scan_rx_process, ev, data) {
   PROCESS_BEGIN();
   LOG_DBG("scan rx process start\n");
@@ -1639,3 +1707,4 @@ PROCESS_THREAD(ble_hal_scan_rx_process, ev, data) {
   }
   PROCESS_END();
 }
+#endif

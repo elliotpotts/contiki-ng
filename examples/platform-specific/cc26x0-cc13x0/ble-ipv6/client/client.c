@@ -48,21 +48,17 @@
 
 #include <string.h>
 #include <stdio.h>
-
-#include "os/dev/ble-hal.h"
 /*---------------------------------------------------------------------------*/
-#define SERVER_IP               "fe80::ce78:abff:fe77:a782"
-#define PEER_IP                 "fe80::566c:0eff:fe83:3fe6"
-#define CLIENT_PORT           61617
-#define SERVER_PORT           61616
+#define SERVER_IP            "fe80::b291:22ff:fe69:fc5a"
+#define CLIENT_PORT          61617
+#define SERVER_PORT          61616
 
-#define PING_TIMEOUT              (CLOCK_SECOND / 4)
-#define CLIENT_SEND_INTERVAL      (CLOCK_SECOND * 1)
+#define PING_TIMEOUT         (CLOCK_SECOND / 4)
+#define CLIENT_SEND_INTERVAL (CLOCK_SECOND * 1)
 
 #define UDP_LEN_MAX           255
 /*---------------------------------------------------------------------------*/
 static uip_ipaddr_t server_addr;
-static uip_ipaddr_t peer_addr;
 static struct uip_icmp6_echo_reply_notification icmp_notification;
 static uint8_t echo_received;
 static struct uip_udp_conn *conn;
@@ -110,11 +106,9 @@ PROCESS_THREAD(ipv6_ble_client_process, ev, data)
   LOG_INFO("IPv6-over-BLE client started\n");
 
   uiplib_ipaddrconv(SERVER_IP, &server_addr);
-  uiplib_ipaddrconv(PEER_IP, &peer_addr);
-  uip_icmp6_echo_reply_callback_add(&icmp_notification, icmp_reply_handler);
-
+  
   LOG_INFO("pinging the IPv6-over-BLE server\n");
-
+  uip_icmp6_echo_reply_callback_add(&icmp_notification, icmp_reply_handler);
   do {
     etimer_set(&timer, PING_TIMEOUT);
     PROCESS_WAIT_EVENT_UNTIL(etimer_expired(&timer));

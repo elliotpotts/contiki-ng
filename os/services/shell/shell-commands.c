@@ -822,6 +822,14 @@ PT_THREAD(cmd_llsec_setkey(struct pt *pt, shell_output_func output, char *args))
 }
 #endif /* LLSEC802154_ENABLED */
 /*---------------------------------------------------------------------------*/
+#include "os/dev/ble-hal.h"
+extern struct ble_hal_driver ble_hal;
+static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args)) {
+    PT_BEGIN(pt);
+    ble_hal.adv_ext(NULL, (uint8_t*)args, strlen(args));
+    PT_END(pt);
+}
+/*---------------------------------------------------------------------------*/
 void
 shell_commands_init(void)
 {
@@ -901,6 +909,9 @@ const struct shell_command_t builtin_shell_commands[] = {
   { "llsec-set-level", cmd_llsec_setlv, "'> llsec-set-level <lv>': Set the level of link layer security (show if no lv argument)"},
   { "llsec-set-key", cmd_llsec_setkey, "'> llsec-set-key <id> <key>': Set the key of link layer security"},
 #endif /* LLSEC802154_ENABLED */
+#if MAC_CONF_WITH_BLE_CL
+  { "ble-adv",              cmd_ble_adv,              "'> ble-adv': Advertise a string" },
+#endif
   { NULL, NULL, NULL },
 };
 

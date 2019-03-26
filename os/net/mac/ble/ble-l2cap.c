@@ -39,7 +39,6 @@
 /*---------------------------------------------------------------------------*/
 
 #include "net/mac/ble/ble-l2cap.h"
-#include "dev/ble-an.h"
 #include "net/packetbuf.h"
 #include "net/netstack.h"
 #include "lib/memb.h"

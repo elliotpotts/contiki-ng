@@ -271,6 +271,8 @@ struct ble_hal_driver {
 
   /*------------------------------------------------------------------------*/
   /* ADVERTISING COMMANDS                                                   */
+  ble_result_t (*adv_ext) (uint8_t *tgt_a, const uint8_t *data, unsigned len);
+  
   /**
    * Sets the parameter for advertising.
    *
