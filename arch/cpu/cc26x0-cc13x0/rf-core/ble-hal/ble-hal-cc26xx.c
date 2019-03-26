@@ -213,7 +213,7 @@ static void advertising_event(struct rtimer *t, void *ptr);
 
 /* SCANNER data structures */
 #if MAC_CONF_WITH_BLE_CL
-#define SCAN_RX_BUFFERS_DATA_LEN       200
+#define SCAN_RX_BUFFERS_DATA_LEN       300
 #define SCAN_RX_BUFFERS_NUM            6
 #define SCAN_PREPROCESSING_TIME_TICKS  65
 
@@ -611,20 +611,24 @@ ble_result_t adv_ext(uint8_t *tgt_a, const uint8_t *data, unsigned len) {
   rfc_ble5ExtAdvEntry_t adv_pkt = {
     .extHdrInfo = {
       .length = 1 + 6, //flags + AdvA
-      .advMode = 0
+      .advMode = 0,
     },
     .extHdrFlags = 1, //AdvA
-    .advDataLen = 40,
+    .extHdrConfig = {
+      .bSkipAdvA = 1
+    },
+    .advDataLen = 247,
     .pAdvData = (uint8_t*)lorem //adv_data
   };
   
   // device address
-  uint8_t my_addr[20];
+  uint8_t my_addr[6];// = {1, 2, 3, 4, 5, 6, 7, 8};
   ble_addr_cpy_to(my_addr);
+  LOG_DBG("advertising from: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", my_addr[0], my_addr[1], my_addr[2], my_addr[3], my_addr[4], my_addr[5]);
 
   // Construct parameters and command
   rfc_ble5AdvExtPar_t params = {
-    .pAdvPkt = (uint8_t*) &adv_pkt, //Pointer to extended advertising packet for the ADV_EXT_IND packet.
+    .pAdvPkt = (uint8_t*) &adv_pkt,
     .auxPtrTargetTime = TRIG_NEVER,
     .pDeviceAddress = (uint16_t*)&my_addr[0]
   };
@@ -960,7 +964,8 @@ static void scan_rx(struct rtimer *t, void *userdata) {
   
   while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
     uint8_t *rx_data = param->rx_queue_current->data;
-    uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */ - 1 /* bAppendStatus = 1 */;
+    uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */
+                                     - 2 /* bAppendStatus = 2 (was 1 octec for legacy BLE) */;
     uint8_t header = *rx_data++;
     uint8_t *payload = rx_data;
     uint8_t *payload_end = payload + payload_len;
@@ -981,7 +986,21 @@ static void scan_rx(struct rtimer *t, void *userdata) {
       /* 	} */
       /* } */
       if (pdu_type == 7) {
-	LOG_DBG("Scanned ADV_EXT_IND\n");
+	uint8_t ext_header_len = *payload++;
+	if (ext_header_len > 0) {
+	  uint8_t ext_header_flags = *payload++;
+	  if (ext_header_flags & 1) {
+	    uint8_t adv_a[6];
+	    for (int i = 0; i < 6; i++) adv_a[i] = *payload++;
+	    LOG_DBG("Scanned ADV_EXT_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X with %u bytes\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5], payload_end - payload);
+	  }
+	}
+	char adv_data[255];
+	char* adv_data_out = adv_data;
+	while (payload < payload_end) {
+	  *adv_data_out++ = *payload++;
+	}
+	LOG_DBG("  %s\n", adv_data);
       }
     }
 

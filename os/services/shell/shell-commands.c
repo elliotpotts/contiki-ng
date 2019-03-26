@@ -824,15 +824,24 @@ PT_THREAD(cmd_llsec_setkey(struct pt *pt, shell_output_func output, char *args))
 /*---------------------------------------------------------------------------*/
 #include "os/dev/ble-hal.h"
 extern struct ble_hal_driver ble_hal;
-static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args)) {
-    PT_BEGIN(pt);
-    ble_hal.adv_ext(NULL, (uint8_t*)args, strlen(args));
-    PT_END(pt);
+static PT_THREAD(cmd_ble_addr(struct pt *pt, shell_output_func output, char *args)) {
+  PT_BEGIN(pt);
+  uint8_t bd_addr[6];
+  ble_hal.read_bd_addr(&bd_addr[0]);
+  SHELL_OUTPUT(output, "%.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", bd_addr[0], bd_addr[1], bd_addr[2], bd_addr[3], bd_addr[4], bd_addr[5]);
+  PT_END(pt);
 }
+
+static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args)) {
+  PT_BEGIN(pt);
+  ble_hal.adv_ext(NULL, (uint8_t*)args, strlen(args));
+  PT_END(pt);
+}
+
 static PT_THREAD(cmd_ble_scan(struct pt *pt, shell_output_func output, char *args)) {
-    PT_BEGIN(pt);
-    ble_hal.set_scan_enable(1, 0);
-    PT_END(pt);
+  PT_BEGIN(pt);
+  ble_hal.set_scan_enable(1, 0);
+  PT_END(pt);
 }
 
 /*---------------------------------------------------------------------------*/
@@ -916,6 +925,7 @@ const struct shell_command_t builtin_shell_commands[] = {
   { "llsec-set-key", cmd_llsec_setkey, "'> llsec-set-key <id> <key>': Set the key of link layer security"},
 #endif /* LLSEC802154_ENABLED */
 #if MAC_CONF_WITH_BLE_CL
+  { "ble-addr",             cmd_ble_addr,             "'> ble-addr: Show this devices' Bluetooth address" },
   { "ble-adv",              cmd_ble_adv,              "'> ble-adv': Advertise a string" },
   { "ble-scan",             cmd_ble_scan,             "'> ble-scan: Enable scanning"    },
 #endif
