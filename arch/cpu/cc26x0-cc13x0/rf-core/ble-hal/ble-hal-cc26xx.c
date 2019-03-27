@@ -613,7 +613,13 @@ read_buffer_size(unsigned int *buf_len, unsigned int *num_buf)
   return BLE_RESULT_OK;
 }
 
+ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
+  bool should_restart_scan = scanner.scanning;
+  if (scanner.scanning) {
+    LOG_DBG("stopping scanner in order to advertise\n");
+    set_scan_enable(0, 0);
+  }
   // max pdu size = 255
   // ext header size = 1
   //   +- flags = 1
@@ -626,8 +632,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     return BLE_RESULT_ERROR;
   }
 
-  LOG_DBG("tgt_a  %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
-	  ,tgt_bd_addr[0], tgt_bd_addr[1], tgt_bd_addr[2], tgt_bd_addr[3], tgt_bd_addr[4], tgt_bd_addr[5]);
+  //LOG_DBG("tgt_a  %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
+//	  ,tgt_bd_addr[0], tgt_bd_addr[1], tgt_bd_addr[2], tgt_bd_addr[3], tgt_bd_addr[4], tgt_bd_addr[5]);
   rfc_ble5ExtAdvEntry_t adv_pkt = {
     .extHdrInfo = {
       .length = header_len,
@@ -680,6 +686,11 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   LOG_DBG("finished. turning off rf core...\n");
   off();
   LOG_DBG("finished.\n");
+
+  if (should_restart_scan) {
+    LOG_DBG("reenabling scan\n");
+    set_scan_enable(1, 0);
+  }
   
   return BLE_RESULT_OK;
 }
@@ -1057,13 +1068,12 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 	}
 	*adv_data_out++ = '\0';
 
-	if (adv_a_present && tgt_a_present) {
-	  LOG_DBG("Scanned %u bytes from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X directed to %.2X:%.2X:%.2X:%.2X:%.2X:%.2X: \n  %s\n"
-		  ,payload_end - payload
-		  ,adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]
-		  ,tgt_a[0], tgt_a[1], tgt_a[2], tgt_a[3], tgt_a[4], tgt_a[5]
-		  ,adv_data);
+	LOG_DBG("Scanning %u bytes...:\n", payload_end - payload);
+	if (adv_a_present) {
+	  LOG_DBG("    from: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
+		  ,adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
 	}
+	LOG_DBG("    data: %s\n", adv_data);
       }
     }
 
@@ -1074,6 +1084,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 
   if (param->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_DBG("Scan rx buffer is out of space!\n");
+    scanner.scanning = false;
   } else {
     rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, param);
   }
@@ -1139,15 +1150,20 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
       }
     }
     //off(); // not sure when to turn off?
+    scanner.scanning = true;
 
     LOG_DBG("Scheduling rx check\n");
     rtimer_set(&scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &scanner);
     
     return BLE_RESULT_OK;
   } else if (!enable) {
+    rfc_CMD_STOP_t cmd = {
+      .commandNo = CMD_STOP
+    };
+    rf_ble_cmd_send((uint8_t*)&cmd);
+    rf_ble_cmd_wait((uint8_t*)&cmd);
     scanner.scanning = false;
-    LOG_DBG("STUB! (disabling scanning)\n");
-    return BLE_RESULT_NOT_SUPPORTED;
+    return BLE_RESULT_OK;
   } else {
     /* already on */
     return BLE_RESULT_OK;

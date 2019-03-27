@@ -31,7 +31,7 @@ static void packet_input(void) {
 
 static int on() {
   LOG_DBG("on\n");
-  //ble_hal.set_scan_enable(1, 0);
+  ble_hal.set_scan_enable(1, 0);
   return 0;
 }
 
@@ -41,7 +41,8 @@ static int off() {
 }
 
 static int max_payload() {
-  return ADV_DATA_MAX_LEN - GAP_ADV_OVERHEAD - 6 - 6;
+    return 240;
+    //return ADV_DATA_MAX_LEN - GAP_ADV_OVERHEAD - 6 - 6;
 }
 
 static void init() {
