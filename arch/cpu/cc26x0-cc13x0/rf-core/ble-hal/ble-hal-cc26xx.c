@@ -1033,7 +1033,6 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 	bool aux_ptr_present = 0;
 	bool sync_info_present = 0;
 	bool tx_power_present = 0;
-	LOG_DBG("Adv with len %x\n", ext_header_len);
 	if (ext_header_len > 0) {
 	  uint8_t ext_header_flags = *payload++;
 	  
@@ -1068,7 +1067,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 	}
 	*adv_data_out++ = '\0';
 
-	LOG_DBG("Scanning %u bytes...:\n", payload_end - payload);
+	LOG_DBG("Scanning %u bytes...:\n", payload_end - ext_header_end);
 	if (adv_a_present) {
 	  LOG_DBG("    from: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
 		  ,adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
@@ -1104,9 +1103,7 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
       return BLE_RESULT_ERROR;
     }
     
-    read_bd_addr(my_addr);
-    LOG_DBG("scanning with: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", my_addr[0], my_addr[1], my_addr[2], my_addr[3], my_addr[4], my_addr[5]);
-    
+    read_bd_addr(my_addr); // TODO: do this once, at init probably    
     scanner.params = (rfc_ble5ScannerPar_t) {
       .pRxQ = &scanner.rx_queue,
       .rxConfig = {
