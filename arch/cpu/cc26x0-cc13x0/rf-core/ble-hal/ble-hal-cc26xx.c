@@ -67,54 +67,14 @@
 
 #define BLE5_ADV_EXT_HDR_FLAG_ADV_A     (1 << 0)
 #define BLE5_ADV_EXT_HDR_FLAG_TGT_A     (1 << 1)
-
+/* RFU */
 #define BLE5_ADV_EXT_HDR_FLAG_ADI       (1 << 3)
 #define BLE5_ADV_EXT_HDR_FLAG_AUX_PTR   (1 << 4)
 #define BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO (1 << 5)
 #define BLE5_ADV_EXT_HDR_FLAG_TX_POWER  (1 << 6)
+/* RFU... */
 
 #include <string.h>
-
-const char* status_name(unsigned status) {
-    switch (status) {
-    case RF_CORE_RADIO_OP_STATUS_IDLE: return "RF_CORE_RADIO_OP_STATUS_IDLE";
-    case RF_CORE_RADIO_OP_STATUS_PENDING: return "RF_CORE_RADIO_OP_STATUS_PENDING";
-    case RF_CORE_RADIO_OP_STATUS_ACTIVE: return "RF_CORE_RADIO_OP_STATUS_ACTIVE";
-    case RF_CORE_RADIO_OP_STATUS_SKIPPED: return "RF_CORE_RADIO_OP_STATUS_SKIPPED";
-    case RF_CORE_RADIO_OP_STATUS_DONE_OK: return "RF_CORE_RADIO_OP_STATUS_DONE_OK";
-    case RF_CORE_RADIO_OP_STATUS_DONE_COUNTDOWN: return " RF_CORE_RADIO_OP_STATUS_DONE_COUNTDOWN";
-    case RF_CORE_RADIO_OP_STATUS_DONE_RXERR: return " RF_CORE_RADIO_OP_STATUS_DONE_RXERR";
-    case RF_CORE_RADIO_OP_STATUS_DONE_TIMEOUT: return " RF_CORE_RADIO_OP_STATUS_DONE_TIMEOUT";
-    case RF_CORE_RADIO_OP_STATUS_DONE_STOPPED: return " RF_CORE_RADIO_OP_STATUS_DONE_STOPPED";
-    case RF_CORE_RADIO_OP_STATUS_DONE_ABORT: return " RF_CORE_RADIO_OP_STATUS_DONE_ABORT";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_PAST_START: return " RF_CORE_RADIO_OP_STATUS_ERROR_PAST_START";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_START_TRIG: return " RF_CORE_RADIO_OP_STATUS_ERROR_START_TRIG";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_CONDITION: return " RF_CORE_RADIO_OP_STATUS_ERROR_CONDITION";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_PAR: return " RF_CORE_RADIO_OP_STATUS_ERROR_PAR";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_POINTER: return " RF_CORE_RADIO_OP_STATUS_ERROR_POINTER";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_CMDID: return " RF_CORE_RADIO_OP_STATUS_ERROR_CMDID";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_NO_SETUP: return " RF_CORE_RADIO_OP_STATUS_ERROR_NO_SETUP";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_NO_FS: return " RF_CORE_RADIO_OP_STATUS_ERROR_NO_FS";
-    case RF_CORE_RADIO_OP_STATUS_ERROR_SYNTH_PROG: return " RF_CORE_RADIO_OP_STATUS_ERROR_SYNTH_PROG";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_OK:          return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_OK";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_RXTIMEOUT:   return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_RXTIMEOUT";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_NOSYNC:      return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_NOSYNC";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_RXERR:       return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_RXERR";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_CONNECT:     return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_CONNECT";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_MAXNACK:     return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_MAXNACK";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_ENDED:       return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_ENDED";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_ABORT:       return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_ABORT";
-    case RF_CORE_RADIO_OP_STATUS_BLE_DONE_STOPPED:     return "RF_CORE_RADIO_OP_STATUS_BLE_DONE_STOPPED";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_PAR:        return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_PAR";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF:      return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_NO_SETUP:   return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_NO_SETUP";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_NO_FS:      return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_NO_FS";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_SYNTH_PROG: return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_SYNTH_PROG";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXOVF:      return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXOVF";
-    case RF_CORE_RADIO_OP_STATUS_BLE_ERROR_TXUNF:      return "RF_CORE_RADIO_OP_STATUS_BLE_ERROR_TXUNF";
-    default: return "!unkown status!";
-    }
-}
 
 #include "rf-core/ble-hal/rf-ble-cmd.h"
 #if RADIO_CONF_BLE5
@@ -222,7 +182,7 @@ static void advertising_event(struct rtimer *t, void *ptr);
 /* SCANNER data structures */
 #if MAC_CONF_WITH_BLE_CL
 #define SCAN_RX_BUFFERS_DATA_LEN       300
-#define SCAN_RX_BUFFERS_NUM            6
+#define SCAN_RX_BUFFERS_NUM            10
 #define SCAN_PREPROCESSING_TIME_TICKS  65
 
 typedef struct {
@@ -617,7 +577,6 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
   bool should_restart_scan = scanner.scanning;
   if (scanner.scanning) {
-    LOG_DBG("stopping scanner in order to advertise\n");
     set_scan_enable(0, 0);
   }
   // max pdu size = 255
@@ -632,8 +591,6 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     return BLE_RESULT_ERROR;
   }
 
-  //LOG_DBG("tgt_a  %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
-//	  ,tgt_bd_addr[0], tgt_bd_addr[1], tgt_bd_addr[2], tgt_bd_addr[3], tgt_bd_addr[4], tgt_bd_addr[5]);
   rfc_ble5ExtAdvEntry_t adv_pkt = {
     .extHdrInfo = {
       .length = header_len,
@@ -648,7 +605,6 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .pExtHeader = tgt_bd_addr ? (uint8_t*) tgt_bd_addr : NULL,
     .pAdvData = (uint8_t*) adv_data //TODO: WARNING: double check that this is allowed! spec says only system CPU writes
   };
-  LOG_DBG("flags: %x\n", adv_pkt.extHdrFlags);
   
   uint8_t my_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(my_addr);
@@ -674,21 +630,15 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   };
 
   // Submit command
-  LOG_DBG("turning on\n");
   if(on() != BLE_RESULT_OK) {
-    LOG_DBG("could not enable rf core\n");
+    LOG_DBG("could not enable rf core prior to ADV_EXT \n");
     return BLE_RESULT_ERROR;
   }
-  LOG_DBG("sending\n");
   rf_ble_cmd_send((uint8_t*) &cmd);
-  LOG_DBG("sent. waiting...\n");
   rf_ble_cmd_wait((uint8_t*) &cmd);
-  LOG_DBG("finished. turning off rf core...\n");
   off();
-  LOG_DBG("finished.\n");
 
   if (should_restart_scan) {
-    LOG_DBG("reenabling scan\n");
     set_scan_enable(1, 0);
   }
   
@@ -1008,72 +958,55 @@ static void scan_rx(struct rtimer *t, void *userdata) {
     memcpy(&status, payload_end, sizeof(rfc_bleRxStatus_t));
 
     uint8_t pdu_type = header & 0b00001111;
-    if (!status.status.bIgnore && !status.status.bCrcErr) {
-      /* if (pdu_type == 0) { */
-      /* 	uint8_t adv_a[6]; */
-      /* 	for(int i = 0; i < 6; i++) adv_a[5 - i] = *payload++; */
-      /* 	LOG_DBG("Scanned ADV_IND from %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]); */
-      /* 	while (payload < payload_end) { */
-      /* 	  uint8_t ad_len = *payload++; */
-      /* 	  uint8_t ad_type = *payload++; */
-      /* 	  payload += ad_len - 1; */
-      /* 	  LOG_DBG("  ad_type: %.2x      bytes left: %u\n", ad_type, payload_end - payload); */
-      /* 	} */
-      /* } */
-      if (pdu_type == 7) {
-	uint8_t ext_header_len = *payload++;
-	uint8_t* ext_header_end = payload + ext_header_len;
-	bool adv_a_present = 0;
-	char adv_a[BLE_ADDR_SIZE];
+    if (pdu_type == 7 && !status.status.bIgnore && !status.status.bCrcErr) {
+      uint8_t ext_header_len = *payload++;
+      uint8_t* ext_header_end = payload + ext_header_len;
+      bool adv_a_present = 0;
+      uint8_t adv_a[BLE_ADDR_SIZE];
+      linkaddr_t sender_addr;
 	
-	bool tgt_a_present = 0;
-	char tgt_a[BLE_ADDR_SIZE];
+      bool tgt_a_present = 0;
+      uint8_t tgt_a[BLE_ADDR_SIZE];
 	
-	bool adi_present = 0;
-	bool aux_ptr_present = 0;
-	bool sync_info_present = 0;
-	bool tx_power_present = 0;
-	if (ext_header_len > 0) {
-	  uint8_t ext_header_flags = *payload++;
+      bool adi_present = 0;
+      bool aux_ptr_present = 0;
+      bool sync_info_present = 0;
+      bool tx_power_present = 0;
+      if (ext_header_len > 0) {
+	uint8_t ext_header_flags = *payload++;
 	  
-	  adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
-	  if (adv_a_present) {
-	    for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
-	  }
-
-	  tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
-	  if (tgt_a_present) {
-	    for (int i = 0; i < BLE_ADDR_SIZE; i++) tgt_a[i] = *payload++;
-	  }
-	  
-	  adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
-	  if (adi_present) payload += 16;
-	  
-	  aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
-	  if (aux_ptr_present) payload += 24;
-	  
-	  sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
-	  if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
-	    
-	  tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
-	  if (tx_power_present) payload += 1;
-
-	  payload = ext_header_end;
-	}
-	char adv_data[BLE5_ADV_DATA_SIZE_MAX];
-	char* adv_data_out = adv_data;
-	while (payload < payload_end) {
-	  *adv_data_out++ = *payload++;
-	}
-	*adv_data_out++ = '\0';
-
-	LOG_DBG("Scanning %u bytes...:\n", payload_end - ext_header_end);
+	adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
 	if (adv_a_present) {
-	  LOG_DBG("    from: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n"
-		  ,adv_a[0], adv_a[1], adv_a[2], adv_a[3], adv_a[4], adv_a[5]);
+	  for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
+	  ble_addr_to_eui64(sender_addr.u8, adv_a);
 	}
-	LOG_DBG("    data: %s\n", adv_data);
+
+	tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
+	if (tgt_a_present) {
+	  for (int i = 0; i < BLE_ADDR_SIZE; i++) tgt_a[i] = *payload++;
+	}
+	  
+	adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
+	if (adi_present) payload += 16;
+	  
+	aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
+	if (aux_ptr_present) payload += 24;
+	  
+	sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
+	if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
+	    
+	tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
+	if (tx_power_present) payload += 1;
+
+	payload = ext_header_end;
       }
+
+      packetbuf_clear();
+      memcpy(packetbuf_dataptr(), payload, payload_end - payload);
+      packetbuf_set_datalen(payload_end - payload);
+      packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
+      packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &sender_addr);
+      NETSTACK_MAC.input();
     }
 
     /* free current entry (clear BLE data length & reset status) */
@@ -1082,10 +1015,10 @@ static void scan_rx(struct rtimer *t, void *userdata) {
   }
 
   if (param->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
-    LOG_DBG("Scan rx buffer is out of space!\n");
+    LOG_ERR("Scan rx buffer is out of space!\n");
     scanner.scanning = false;
   } else {
-    rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, param);
+    rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, param);
   }
 }
 
@@ -1097,9 +1030,8 @@ ble_result_t set_scan_param(ble_scan_type_t type, unsigned int scan_interval, un
 uint8_t my_addr[BLE_ADDR_SIZE];
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
   if(enable && !scanner.scanning) {
-    LOG_DBG("enabling scanning\n");
     if(on() != BLE_RESULT_OK) {
-      LOG_ERR("scanner event: could not enable rf core\n");
+      LOG_ERR("could not enable rf core prior to scanning\n");
       return BLE_RESULT_ERROR;
     }
     
@@ -1140,25 +1072,21 @@ ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplic
       .pOutput = &scanner.output
     };
   
-    {
-      unsigned status = rf_ble_cmd_send((uint8_t*)&scanner.cmd);
-      if (status != RF_BLE_CMD_OK) {
-	LOG_ERR("scan event: couldn't send command 0x%04X\n", scanner.cmd.status);
-      }
-    }
-    //off(); // not sure when to turn off?
+    rf_ble_cmd_send((uint8_t*)&scanner.cmd);
     scanner.scanning = true;
-
-    LOG_DBG("Scheduling rx check\n");
     rtimer_set(&scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &scanner);
-    
     return BLE_RESULT_OK;
   } else if (!enable) {
     rfc_CMD_STOP_t cmd = {
       .commandNo = CMD_STOP
     };
+    //TODO: don't worry if the CMD_STOP doesn't wait.
+    // ... does STOP ever wait?
     rf_ble_cmd_send((uint8_t*)&cmd);
-    rf_ble_cmd_wait((uint8_t*)&cmd);
+    unsigned status = rf_ble_cmd_wait((uint8_t*)&cmd);
+    if (status != RF_BLE_CMD_OK) {
+      LOG_ERR("Ignore prior warning; STOP command finished before waiting could start\n");
+    }
     scanner.scanning = false;
     return BLE_RESULT_OK;
   } else {

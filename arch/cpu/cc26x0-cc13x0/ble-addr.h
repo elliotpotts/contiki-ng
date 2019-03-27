@@ -65,8 +65,7 @@ void ble_addr_cpy_to(uint8_t *dst);
  *            written
  * \param src A pointer to the BLE address that is to be copied
  */
-void ble_addr_to_eui64(uint8_t *dst, uint8_t *src);
-
+void ble_addr_to_eui64(uint8_t *dst, const uint8_t *src);
 /*---------------------------------------------------------------------------*/
 /**
  * \brief Copy the node's EUI64 address that is based on its factory BLE address

@@ -17,16 +17,40 @@ enum { ADV_TYPE = 0xff };
 
 extern const struct ble_hal_driver ble_hal;
 
+void eu64_to_ble_addr(uint8_t *dst, const uint8_t *src) {
+  dst[0] = src[0];
+  dst[1] = src[1];
+  dst[2] = src[2];
+  dst[3] = src[5];
+  dst[4] = src[6];
+  dst[5] = src[7];
+}
+
 static void send_packet(mac_callback_t sent, void *ptr) {
-  if (linkaddr_cmp(packetbuf_addr(PACKETBUF_ADDR_RECEIVER), &linkaddr_null)) {
-    // broadcast
+  uint16_t data_len = packetbuf_datalen();
+  if (data_len > 240) {
+    LOG_ERR("data too long to send\n");
+    mac_call_sent_callback(sent, ptr, MAC_TX_ERR, 0);
+    return;
+  }
+
+  if (packetbuf_holds_broadcast()) {
+    LOG_DBG("Sending broadcast packet\n");
+    ble_hal.adv_ext(NULL, packetbuf_dataptr(), data_len);
+    mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   } else {
-    // 
+    uint8_t ble_addr[BLE_ADDR_SIZE];
+    eu64_to_ble_addr(ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
+    LOG_DBG("Sending packet to %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
+	    ble_addr[0], ble_addr[1], ble_addr[2], ble_addr[3], ble_addr[4], ble_addr[5]);
+    ble_hal.adv_ext(ble_addr, packetbuf_dataptr(), data_len);
+    mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   }
 }
 
 static void packet_input(void) {
   LOG_DBG("packet_input\n");
+  NETSTACK_NETWORK.input(); // and say a prayer
 }
 
 static int on() {

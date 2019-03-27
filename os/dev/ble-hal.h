@@ -110,6 +110,8 @@ typedef enum {
   BLE_ADDR_TYPE_RANDOM
 } ble_addr_type_t;
 
+void eu64_to_ble_addr(uint8_t *dst, const uint8_t *src);
+
 /*---------------------------------------------------------------------------*/
 /* Advertising modes of BLE */
 typedef enum {
@@ -271,7 +273,7 @@ struct ble_hal_driver {
 
   /*------------------------------------------------------------------------*/
   /* ADVERTISING COMMANDS                                                   */
-  ble_result_t (*adv_ext) (const uint8_t *tgt_bd_addr, const uint8_t *data, unsigned len);
+  ble_result_t (*adv_ext) (const uint8_t *tgt_ble_addr, const uint8_t *data, unsigned len);
   
   /**
    * Sets the parameter for advertising.
