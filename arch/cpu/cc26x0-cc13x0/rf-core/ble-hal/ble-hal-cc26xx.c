@@ -190,8 +190,8 @@ typedef struct {
   uint8_t data[SCAN_RX_BUFFERS_DATA_LEN];
 } __attribute__ ((packed)) scan_data_entry;
 
-
 typedef struct {
+  /* state */
   bool scanning;
   rtimer_clock_t scan_start;
   struct rtimer timer;
@@ -199,12 +199,93 @@ typedef struct {
   dataQueue_t rx_queue;
   scan_data_entry rx_buffers[SCAN_RX_BUFFERS_NUM];
   scan_data_entry *rx_queue_current;
-  /* control */
+  /* radio interface */
+  uint8_t ble_addr[BLE_ADDR_SIZE];
+  rfc_bleWhiteListEntry_t whitelist[5];
   rfc_ble5ScannerPar_t params;
   rfc_ble5ScanInitOutput_t output;
   rfc_CMD_BLE5_SCANNER_t cmd;
 } ble_scanner_t;
-static ble_scanner_t scanner;
+
+static ble_result_t read_bd_addr(uint8_t *addr);
+void init_scanner(ble_scanner_t* scanner) {
+  memset(scanner, 0, sizeof(ble_scanner_t));
+  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
+    rfc_dataEntry_t* e = &scanner->rx_buffers[i].entry;
+    e->pNextEntry = (uint8_t*) &scanner->rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
+    e->status = DATA_ENTRY_PENDING;
+    e->config.type = 0;
+    e->config.lenSz = 1;
+    e->length = SCAN_RX_BUFFERS_DATA_LEN;
+  }
+  scanner->rx_queue.pCurrEntry = (uint8_t*) &scanner->rx_buffers[0].entry;
+  scanner->rx_queue.pLastEntry = NULL;
+  scanner->rx_queue_current = &scanner->rx_buffers[0];
+  /*  TODO: figure out why this whitelist let's nothing through */
+  scanner->whitelist[0] = (rfc_bleWhiteListEntry_t) {
+    .size = 5,
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xCC << 24) | (0x78 << 16) | (0xAB << 8) | 0x77,
+    .address =   (0xA7 << 8)  | 0x82
+  };
+  scanner->whitelist[1] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xCC << 24) | (0x78 << 16) | (0xAB << 8) | 0x71,
+    .address =   (0x40 << 8)  | 0x07
+  };
+  scanner->whitelist[2] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0x54 << 24) | (0x6C << 16) | (0x0E << 8) | 0x83,
+    .address =   (0x3F << 8)  | 0xE6
+  };
+  scanner->whitelist[3] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0x54 << 24) | (0x6C << 16) | (0x0E << 8) | 0x9B,
+    .address =   (0x63 << 8)  | 0x53
+  };
+  scanner->whitelist[4] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xB0 << 24) | (0x91 << 16) | (0x22 << 8) | 0x69,
+    .address =   (0xFC << 8)  | 0x5A
+  };
+  read_bd_addr(scanner->ble_addr);
+  scanner->params = (rfc_ble5ScannerPar_t) {
+    .pRxQ = &scanner->rx_queue,
+    .rxConfig = {
+      .bAutoFlushIgnored = 1,
+      .bAutoFlushCrcErr = 1,
+      .bAutoFlushEmpty = 1,
+      .bAppendStatus = 1
+      //.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
+    },
+    .scanConfig = {
+      .scanFilterPolicy = 0, /* TODO: set to 1 when whitelist is fixed */
+      .bStrictLenFilter = 1
+    },
+    .pDeviceAddress = (uint16_t*) scanner->ble_addr, // will be checked against incomding tgt addr
+    .pWhiteList = scanner->whitelist,
+    .timeoutTrigger = {
+      .triggerType = TRIG_NEVER
+    },
+    .endTrigger = {
+      .triggerType = TRIG_NEVER
+    }
+  };
+  scanner->cmd = (rfc_CMD_BLE5_SCANNER_t) {
+    .commandNo = CMD_BLE5_SCANNER,
+    .startTrigger = {
+      .triggerType = TRIG_NOW
+    },
+    .condition = {
+      .rule = COND_NEVER // never execute 'next op'
+    },
+    .channel = 37,
+    .pParams = &scanner->params,
+    .pOutput = &scanner->output
+  };
+}
+
+static ble_scanner_t g_scanner;
 #endif
 
 /*---------------------------------------------------------------------------*/
@@ -349,11 +430,6 @@ static void initiator_event(struct rtimer *t, void *ptr);
 /*---------------------------------------------------------------------------*/
 PROCESS(ble_hal_conn_rx_process, "BLE/CC26xx connection RX process");
 process_event_t rx_data_event;
-
-#if MAC_CONF_WITH_BLE_CL
-PROCESS(ble_hal_scan_rx_process, "BLE/CC26xx scan RX process");
-process_event_t scan_rx_data_event;
-#endif
 /*---------------------------------------------------------------------------*/
 static void
 setup_buffers(void)
@@ -362,22 +438,6 @@ setup_buffers(void)
   ble_conn_param_t *conn;
   uint8_t i;
   rfc_dataEntry_t *entry;
-
-  #if MAC_CONF_WITH_BLE_CL
-  /* Setup scanner RX circular buffer */
-  memset(&scanner, 0, sizeof(ble_scanner_t));
-  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    rfc_dataEntry_t* e = &scanner.rx_buffers[i].entry;
-    e->pNextEntry = (uint8_t*) &scanner.rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
-    e->status = DATA_ENTRY_PENDING;
-    e->config.type = 0;
-    e->config.lenSz = 1;
-    e->length = SCAN_RX_BUFFERS_DATA_LEN;
-  }
-  scanner.rx_queue.pCurrEntry = (uint8_t*) &scanner.rx_buffers[0].entry;
-  scanner.rx_queue.pLastEntry = NULL;
-  scanner.rx_queue_current = &scanner.rx_buffers[0];
-  #endif
 
   /* setup advertisement RX buffer (circular buffer) */
   memset(&adv_param, 0x00, sizeof(ble_adv_param_t));
@@ -538,6 +598,7 @@ reset(void)
   lpm_register_module(&cc26xx_ble_lpm_module);
   rf_core_set_modesel();
   setup_buffers();
+  init_scanner(&g_scanner);
   if(on() != BLE_RESULT_OK) {
     return BLE_RESULT_ERROR;
   }
@@ -575,8 +636,8 @@ read_buffer_size(unsigned int *buf_len, unsigned int *num_buf)
 
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
-  bool should_restart_scan = scanner.scanning;
-  if (scanner.scanning) {
+  bool should_restart_scan = g_scanner.scanning;
+  if (should_restart_scan) {
     set_scan_enable(0, 0);
   }
   // max pdu size = 255
@@ -603,7 +664,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     },
     .advDataLen = adv_data_len,
     .pExtHeader = tgt_bd_addr ? (uint8_t*) tgt_bd_addr : NULL,
-    .pAdvData = (uint8_t*) adv_data //TODO: WARNING: double check that this is allowed! spec says only system CPU writes
+    .pAdvData = (uint8_t*) adv_data //TODO: WARNING: double check that this is allowed (re: const cast). spec says only system CPU writes
   };
   
   uint8_t my_addr[BLE_ADDR_SIZE];
@@ -941,6 +1002,9 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
 /*---------------------------------------------------------------------------*/
 #if MAC_CONF_WITH_BLE_CL
 
+PROCESS(ble_hal_scan_rx_process, "BLE/CC26xx scan RX process");
+process_event_t scan_rx_data_event;
+
 #define BLE5_ADV_DATA_SIZE_MAX 255
 
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
@@ -1016,7 +1080,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 
   if (param->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_ERR("Scan rx buffer is out of space!\n");
-    scanner.scanning = false;
+    g_scanner.scanning = false;
   } else {
     rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, param);
   }
@@ -1027,67 +1091,23 @@ ble_result_t set_scan_param(ble_scan_type_t type, unsigned int scan_interval, un
   return BLE_RESULT_OK;
 }
 
-uint8_t my_addr[BLE_ADDR_SIZE];
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
-  if(enable && !scanner.scanning) {
+  if(enable && !g_scanner.scanning) {
     if(on() != BLE_RESULT_OK) {
       LOG_ERR("could not enable rf core prior to scanning\n");
       return BLE_RESULT_ERROR;
     }
-    
-    read_bd_addr(my_addr); // TODO: do this once, at init probably    
-    scanner.params = (rfc_ble5ScannerPar_t) {
-      .pRxQ = &scanner.rx_queue,
-      .rxConfig = {
-	.bAutoFlushIgnored = 1,
-	.bAutoFlushCrcErr = 1,
-	.bAutoFlushEmpty = 1,
-	.bAppendStatus = 1
-	//.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
-      },
-      .scanConfig = {
-	.bStrictLenFilter = 1
-      },
-      .pDeviceAddress = (uint16_t*) my_addr, // will be checked against incomding tgt addr
-      .timeoutTrigger = {
-	.triggerType = TRIG_NEVER
-      },
-      .endTrigger = {
-	.triggerType = TRIG_NEVER
-      }
-    };
-    
-    memset(&scanner.output, 0, sizeof(scanner.output));
-
-    scanner.cmd = (rfc_CMD_BLE5_SCANNER_t) {
-      .commandNo = CMD_BLE5_SCANNER,
-      .startTrigger = {
-	.triggerType = TRIG_NOW
-      },
-      .condition = {
-	.rule = COND_NEVER // never execute 'next op'
-      },
-      .channel = 37,
-      .pParams = &scanner.params,
-      .pOutput = &scanner.output
-    };
-  
-    rf_ble_cmd_send((uint8_t*)&scanner.cmd);
-    scanner.scanning = true;
-    rtimer_set(&scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &scanner);
+    rf_ble_cmd_send((uint8_t*)&g_scanner.cmd);
+    g_scanner.scanning = true;
+    rtimer_set(&g_scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &g_scanner);
     return BLE_RESULT_OK;
   } else if (!enable) {
     rfc_CMD_STOP_t cmd = {
       .commandNo = CMD_STOP
     };
-    //TODO: don't worry if the CMD_STOP doesn't wait.
-    // ... does STOP ever wait?
     rf_ble_cmd_send((uint8_t*)&cmd);
-    unsigned status = rf_ble_cmd_wait((uint8_t*)&cmd);
-    if (status != RF_BLE_CMD_OK) {
-      LOG_ERR("Ignore prior warning; STOP command finished before waiting could start\n");
-    }
-    scanner.scanning = false;
+    rf_core_wait_cmd_done((uint8_t*)&cmd);
+    g_scanner.scanning = false;
     return BLE_RESULT_OK;
   } else {
     /* already on */

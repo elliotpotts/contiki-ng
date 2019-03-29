@@ -35,14 +35,11 @@ static void send_packet(mac_callback_t sent, void *ptr) {
   }
 
   if (packetbuf_holds_broadcast()) {
-    LOG_DBG("Sending broadcast packet\n");
     ble_hal.adv_ext(NULL, packetbuf_dataptr(), data_len);
     mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   } else {
     uint8_t ble_addr[BLE_ADDR_SIZE];
     eu64_to_ble_addr(ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
-    LOG_DBG("Sending packet to %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-	    ble_addr[0], ble_addr[1], ble_addr[2], ble_addr[3], ble_addr[4], ble_addr[5]);
     ble_hal.adv_ext(ble_addr, packetbuf_dataptr(), data_len);
     mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   }
@@ -71,7 +68,6 @@ static int max_payload() {
 
 static void init() {
   int result = ble_hal.reset();
-  LOG_DBG("ble_hal.reset() => %s\n", result == BLE_RESULT_OK ? "succeeded" : "failed");
   NETSTACK_MAC.on();
 }
 
