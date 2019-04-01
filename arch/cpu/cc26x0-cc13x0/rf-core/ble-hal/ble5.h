@@ -1,0 +1,59 @@
+#ifndef BLE5_H_
+#define BLE5_H_
+
+typedef enum {
+  ble_adv_ind,
+  ble_adv_direct_ind,
+  ble_adv_nonconn_ind,
+  ble_adv_scan_ind,
+  ble_adv_ext_ind,
+  ble_aux_adv_ind,
+  ble_aux_sync_ind,
+  ble_aux_chain_ind
+} ble_adv_pdu_type_t;
+
+typedef enum {
+  ble5_adv_ext_hdr_flag_adv_a = 1 << 0,
+  ble5_adv_ext_hdr_flag_tgt_a = 1 << 1,
+  ble5_adv_ext_hdr_flag_adi = 1 << 3,
+  ble5_adv_ext_hdr_flag_aux_ptr = 1 << 4,
+  ble5_adv_ext_hdr_flag_sync_info = 1 << 5,
+  ble5_adv_ext_hdr_flag_tx_power = 1 << 6,
+} ble5_adv_ext_hdr_flag_t;
+
+enum { BLE5_ADV_PDU_PAYLOAD_MAX_SIZE = 255 };
+
+typedef enum {
+  ble5_clock_accuracy_30us = 0,
+  ble5_clock_accuracy_300us = 1
+} ble5_clock_accuracy_t;
+
+// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.4
+typedef struct {
+  uint16_t data_id:12;
+  uint8_t set_id:4;
+} __attribute__ ((packed)) adi_t;
+
+// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.5
+typedef struct {
+  uint8_t channel_ix:6;
+  ble5_clock_accuracy_t clock_accuracy:1;
+  uint8_t offset_units:1;
+  uint16_t aux_offset:13;
+  uint8_t aux_phy:3;
+} __attribute__ ((packed)) aux_ptr_t;
+
+// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.6
+typedef struct {
+  uint16_t sync_pkt_offset:13;
+  uint8_t offset_units:1;
+  uint8_t ___rfu0:2;
+  uint8_t interval:2;
+  uint64_t channel_map:37;
+  uint8_t sleep_clock_accuracy:3;
+  uint8_t access_addr:4;
+  uint8_t crc_init:3;
+  uint8_t event_cnt:2;
+} __attribute__ ((packed)) sync_info_t;
+
+#endif /* BLE5_H_ */

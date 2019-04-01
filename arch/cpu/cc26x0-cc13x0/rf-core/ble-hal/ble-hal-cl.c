@@ -6,38 +6,28 @@
 #error Connectionless BLE requies BLE5 support
 #endif
 
-#include "lpm.h"
+#include <string.h>
 
 #include "os/sys/rtimer.h"
+#include "os/sys/log.h"
+#include "os/lib/random.h"
 #include "os/dev/ble-hal.h"
+#include "os/net/netstack.h"
+#include "os/net/packetbuf.h"
+
 #include "dev/oscillators.h"
-
+#include "lpm.h"
 #include "ble-addr.h"
-
-#include "net/netstack.h"
-#include "net/packetbuf.h"
 
 #include "rf_data_entry.h"
 #include "rf_ble_cmd.h"
-
 #include "rf-core/rf-core.h"
 #include "rf-ble-cmd.h"
-
-#define BLE5_ADV_EXT_HDR_FLAG_ADV_A     (1 << 0)
-#define BLE5_ADV_EXT_HDR_FLAG_TGT_A     (1 << 1)
-/* RFU */
-#define BLE5_ADV_EXT_HDR_FLAG_ADI       (1 << 3)
-#define BLE5_ADV_EXT_HDR_FLAG_AUX_PTR   (1 << 4)
-#define BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO (1 << 5)
-#define BLE5_ADV_EXT_HDR_FLAG_TX_POWER  (1 << 6)
-/* RFU... */
-
-#include <string.h>
-
 #include "rf-core/ble-hal/rf-ble-cmd.h"
 #include "rf_patches/rf_patch_cpe_bt5.h"
 
-#include "sys/log.h"
+#include "ble5.h"
+
 #define LOG_MODULE "BLE-HAL"
 #define LOG_LEVEL LOG_LEVEL_RADIO
 
@@ -48,15 +38,6 @@ static uint8_t request(void) {
   return LPM_MODE_MAX_SUPPORTED;
 }
 LPM_MODULE(cc26xx_ble_lpm_module, request, NULL, NULL, LPM_DOMAIN_NONE);
-
-// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.5
-typedef struct {
-  uint8_t channel_ix:6;
-  uint8_t ca:1;
-  uint8_t offset_units:1;
-  uint16_t aux_offset:13;
-  uint8_t aux_phy:3;
-} __attribute__ ((packed)) aux_ptr_t;
 
 /* SCANNER data structures */
 #define SCAN_RX_BUFFERS_DATA_LEN       260
@@ -69,14 +50,23 @@ typedef struct {
 } __attribute__ ((packed)) scan_data_entry;
 
 typedef struct {
+  bool populated;
+  uint8_t sid;
+  uint8_t did;
+  scan_data_entry *data;
+} adv_data_entry;
+
+typedef struct {
   /* state */
   bool scanning;
+  uint8_t current_sid;
   rtimer_clock_t scan_start;
   struct rtimer timer;
   /* data */
   dataQueue_t rx_queue;
   scan_data_entry rx_buffers[SCAN_RX_BUFFERS_NUM];
   scan_data_entry *rx_queue_current;
+  adv_data_entry adv_datas[10];
   /* radio interface */
   uint8_t ble_addr[BLE_ADDR_SIZE];
   rfc_bleWhiteListEntry_t whitelist[5];
@@ -167,7 +157,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   //   +- TgtA  = 6
   int header_len = 1 + 6 + (tgt_bd_addr ? 6 : 0);
   int payload_len = header_len + adv_data_len;
-  if (payload_len > 255) {
+  if (payload_len > BLE5_ADV_PDU_PAYLOAD_MAX_SIZE) {
     LOG_ERR("attempt to send adv_ext_ind payload of %d, max is 255.\n", adv_data_len);
     return BLE_RESULT_ERROR;
   }
@@ -177,8 +167,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
       .length = header_len,
       .advMode = 0,
     },
-    .extHdrFlags = BLE5_ADV_EXT_HDR_FLAG_ADV_A
-                 | (tgt_bd_addr ? BLE5_ADV_EXT_HDR_FLAG_TGT_A : 0),
+    .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a
+                 | (tgt_bd_addr ? ble5_adv_ext_hdr_flag_tgt_a : 0),
     .extHdrConfig = {
       .bSkipAdvA = 1
     },
@@ -229,6 +219,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 /* Scanning */
 static void init_scanner(ble_scanner_t* scanner) {
   memset(scanner, 0, sizeof(ble_scanner_t));
+  scanner->current_sid = random_rand() % UINT8_MAX;
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
     rfc_dataEntry_t* e = &scanner->rx_buffers[i].entry;
     e->pNextEntry = (uint8_t*) &scanner->rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
@@ -273,8 +264,7 @@ static void init_scanner(ble_scanner_t* scanner) {
     .rxConfig = {
       .bAutoFlushIgnored = 1,
       .bAutoFlushCrcErr = 1,
-      .bAutoFlushEmpty = 1,
-      .bAppendStatus = 1
+      .bAutoFlushEmpty = 1
       //.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
     },
     .scanConfig = {
@@ -304,73 +294,83 @@ static void init_scanner(ble_scanner_t* scanner) {
   };
 }
 
-#define BLE5_ADV_DATA_SIZE_MAX 255
+static void recv_ext_adv(uint8_t *payload, uint8_t *payload_end) {
+  packetbuf_clear();
+  packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
+  
+  const uint8_t ext_header_len = *payload++;
+  uint8_t* const ext_header_end = payload + ext_header_len;
+  
+  if (ext_header_len > 0) {
+    const uint8_t ext_header_flags = *payload++;
+    
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_adv_a) {
+      linkaddr_t sender_addr;
+      ble_addr_to_eui64(sender_addr.u8, payload);
+      packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &sender_addr);
+      payload += BLE_ADDR_SIZE;
+    }
 
-static void process_1_ind(uint8_t *rx_data) {
-  uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */
-    - 2 /* bAppendStatus = 2 (was 1 octet for legacy BLE) */;
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
+      /* + we are using filtering
+         + therefore we already know adv_a is our own address
+         + therefore just skip it */
+      payload += BLE_ADDR_SIZE;
+    }
+    
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
+      adi_t adi;
+      memcpy(&adi, payload, sizeof(adi));
+      payload += sizeof(adi);
+      (void)adi; /*TODO: make use of adi */
+    }
+
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
+      aux_ptr_t aux_ptr;
+      memcpy(&aux_ptr, payload, sizeof(aux_ptr));
+      payload += sizeof(aux_ptr);
+      (void)aux_ptr; /*TODO: make use of aux_ptr */
+    }
+
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
+      sync_info_t sync_info;
+      memcpy(&sync_info, payload, sizeof(sync_info));
+      payload += sizeof(sync_info);
+      (void)sync_info; /*TODO: make use of sync info */
+    }
+
+    if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
+      uint8_t tx_power = *payload++;
+      (void)tx_power; /*TODO: make use of tx_power */
+    }
+
+    uint8_t *acad = payload;
+    uint8_t *acad_end = ext_header_end;
+    (void)acad;
+    (void)acad_end; /*TODO: make use of acad */
+  }
+  uint8_t* const adv_data = ext_header_end;
+  uint8_t* const adv_data_end = payload_end;
+
+  memcpy(packetbuf_dataptr(), adv_data, adv_data_end - adv_data);
+  packetbuf_set_datalen(adv_data_end - adv_data); //TODO: change when aux ptr comes into gay
+  NETSTACK_MAC.input();
+}
+
+//static void recv_aux
+
+static void recv_adv_pdu(uint8_t *rx_data) {
+  uint8_t payload_len = *rx_data++ - 1; /* lenSz = 1 -> 8 bytes for len */
   uint8_t header = *rx_data++;
   uint8_t *payload = rx_data;
   uint8_t *payload_end = payload + payload_len;
-  rfc_bleRxStatus_t status;
-  memcpy(&status, payload_end, sizeof(rfc_bleRxStatus_t));
-
-  uint8_t pdu_type = header & 0b00001111;
-  if (pdu_type == 7 && !status.status.bIgnore && !status.status.bCrcErr) {
-    uint8_t ext_header_len = *payload++;
-    uint8_t* ext_header_end = payload + ext_header_len;
-    bool adv_a_present = 0;
-    uint8_t adv_a[BLE_ADDR_SIZE];
-    linkaddr_t sender_addr;
-
-    bool tgt_a_present = false;
-    bool adi_present = 0;
-    bool aux_ptr_present = 0;
-    bool sync_info_present = 0;
-    bool tx_power_present = 0;
-    if (ext_header_len > 0) {
-      uint8_t ext_header_flags = *payload++;
-	  
-      adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
-      if (adv_a_present) {
-	for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
-	ble_addr_to_eui64(sender_addr.u8, adv_a);
-      }
-
-      tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
-      if (tgt_a_present) {
-	for (int i = 0; i < BLE_ADDR_SIZE; i++) payload++;
-      }
-	  
-      adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
-      if (adi_present) payload += 16;
-	  
-      aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
-      if (aux_ptr_present) payload += 24;
-	  
-      sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
-      if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
-	    
-      tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
-      if (tx_power_present) payload += 1;
-
-      payload = ext_header_end;
-    }
-
-    char advdata[400];
-    char* advdata_it = &advdata[0];
-    while (payload != payload_end) *advdata_it++ = *payload++;
-    *advdata_it++ = '\0';
-    LOG_DBG("Advdata:\n%s\n", advdata);
-
-    /*
-      packetbuf_clear();
-      memcpy(packetbuf_dataptr(), payload, payload_end - payload);
-      packetbuf_set_datalen(payload_end - payload);
-      packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
-      packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &sender_addr);
-      NETSTACK_MAC.input();
-    */
+  switch (header & 0b00001111) {
+  case ble_adv_ext_ind:
+  case ble_aux_adv_ind:
+  case ble_aux_sync_ind:
+  case ble_aux_chain_ind:
+    recv_ext_adv(payload, payload_end);
+  default: break; //LOG_ERR("Unknown adv type\n");
   }
 }
 
@@ -378,7 +378,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scanner_t *param = (ble_scanner_t *)userdata;
   
   while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
-    process_1_ind(param->rx_queue_current->data);
+    recv_adv_pdu(param->rx_queue_current->data);
     /* free current entry */
     param->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
     param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
