@@ -6,7 +6,7 @@
 #define LOG_CONF_LEVEL_IPV6                     LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_RPL                      LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_6LOWPAN                  LOG_LEVEL_WARN
-#define LOG_CONF_LEVEL_TCPIP                    LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_TCPIP                    LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_MAC                      LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_FRAMER                   LOG_LEVEL_WARN
 #define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_WARN
@@ -18,6 +18,7 @@
 #define QUEUEBUF_CONF_NUM                       1
 #define UIP_CONF_BUFFER_SIZE                    1280
 
+#define RADIO_CONF_BLE5                         1
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
 

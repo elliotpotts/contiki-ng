@@ -41,7 +41,12 @@ CONTIKI_CPU_SOURCEFILES += dbg.c ieee-addr.c batmon-sensor.c adc-sensor.c
 CONTIKI_CPU_SOURCEFILES += slip-arch.c slip.c cc26xx-uart.c lpm.c
 CONTIKI_CPU_SOURCEFILES += gpio-interrupt.c gpio-hal-arch.c oscillators.c
 CONTIKI_CPU_SOURCEFILES += rf-core.c rf-ble.c ieee-mode.c
-CONTIKI_CPU_SOURCEFILES += ble-cc2650.c ble-hal-cc26xx.c ble-addr.c rf-ble-cmd.c
+ifeq ($(MAKE_MAC),MAKE_MAC_BLE_L2CAP)
+  CONTIKI_CPU_SOURCEFILES += ble-cc2650.c ble-hal-l2cap.c ble-addr.c rf-ble-cmd.c
+endif
+ifeq ($(MAKE_MAC),MAKE_MAC_BLE_CL)
+  CONTIKI_CPU_SOURCEFILES += rf-ble-cmd.c ble-hal-cl.c ble-addr.c
+endif
 CONTIKI_CPU_SOURCEFILES += random.c soc-trng.c int-master.c
 CONTIKI_CPU_SOURCEFILES += spi-arch.c
 CONTIKI_CPU_SOURCEFILES += cc26xx-aes.c

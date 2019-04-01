@@ -49,7 +49,7 @@
 #include <string.h>
 #include <stdio.h>
 /*---------------------------------------------------------------------------*/
-#define SERVER_IP            "fe80::b291:22ff:fe69:fc5a"
+#define SERVER_IP            "fe80::566c:0eff:fe9b:6353"
 #define CLIENT_PORT          61617
 #define SERVER_PORT          61616
 
@@ -106,7 +106,7 @@ PROCESS_THREAD(ipv6_ble_client_process, ev, data)
   LOG_INFO("IPv6-over-BLE client started\n");
 
   uiplib_ipaddrconv(SERVER_IP, &server_addr);
-  
+
   LOG_INFO("pinging the IPv6-over-BLE server\n");
   uip_icmp6_echo_reply_callback_add(&icmp_notification, icmp_reply_handler);
   do {

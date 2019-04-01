@@ -38,7 +38,7 @@
  */
 /*---------------------------------------------------------------------------*/
 
-#include "net/mac/ble/ble-l2cap.h"
+#include "net/mac/ble-l2cap/ble-l2cap.h"
 #include "net/packetbuf.h"
 #include "net/netstack.h"
 #include "lib/memb.h"
@@ -123,8 +123,7 @@ init_adv_data(char *adv_data)
   /* BLE flags */
   adv_data[adv_data_len++] = 2;
   adv_data[adv_data_len++] = 0x01;
-  adv_data[adv_data_len++] = BLE_BDT_FLAGS_LIMITED_DISCOVERABLE_MODE
-                           | BLE_BDT_FLAGS_BR_EDR_NOT_SUPPORTED;
+  adv_data[adv_data_len++] = 0x05;
   /* TX power level */
   adv_data[adv_data_len++] = 2;
   adv_data[adv_data_len++] = 0x0A;

@@ -54,13 +54,6 @@
 #define CMD_GET_STATUS(X)         (((rfc_radioOp_t *)X)->status)
 /*---------------------------------------------------------------------------*/
 
-#define SCAN_FILTER_ACCEPT_ALL 0
-#define SCAN_FILTER_ACCEPT_WHITELISTED 1
-#define SCAN_MODE_PASSIVE 0
-#define SCAN_MODE_ACTIVE 1
-#define ADDR_TYPE_PUBLIC 0
-#define ADDR_TYPE_RANDOM 1
-
 /* values for a selection of available TX powers (values from SmartRF Studio) */
 /*static uint16_t tx_power = 0x9330;						/ * +5 dBm * / */
 static uint16_t tx_power = 0x3161;                /*  0 dBm */
@@ -264,34 +257,24 @@ rf_ble_cmd_create_initiator_cmd(uint8_t *cmd, uint8_t channel, uint8_t *params,
 {
 #if RADIO_CONF_BLE5
   rfc_CMD_BLE5_INITIATOR_t *c = (rfc_CMD_BLE5_INITIATOR_t *)cmd;
-  
   memset(c, 0x00, sizeof(rfc_CMD_BLE5_INITIATOR_t));
-  
   c->commandNo = CMD_BLE5_INITIATOR;
-  c->condition.rule = COND_NEVER;
-  c->whitening.bOverride = 0;
-  c->channel = channel;
-  c->pParams = (rfc_ble5InitiatorPar_t *)params;
-  c->startTrigger.triggerType = TRIG_ABSTIME;
-  c->startTime = start_time;
-  c->pOutput = (rfc_ble5ScanInitOutput_t *)output;
-  
   c->txPower = tx_power;
   c->rangeDelay = 0;
+  c->pParams = (rfc_ble5InitiatorPar_t *)params;
+  c->pOutput = (rfc_ble5ScanInitOutput_t *)output;
 #else
   rfc_CMD_BLE_INITIATOR_t *c = (rfc_CMD_BLE_INITIATOR_t *)cmd;
-  
   memset(c, 0x00, sizeof(rfc_CMD_BLE_INITIATOR_t));
-  
   c->commandNo = CMD_BLE_INITIATOR;
+  c->pParams = (rfc_bleInitiatorPar_t *)params;
+  c->pOutput = (rfc_bleInitiatorOutput_t *)output;
+#endif
   c->condition.rule = COND_NEVER;
   c->whitening.bOverride = 0;
   c->channel = channel;
-  c->pParams = (rfc_bleInitiatorPar_t *)params;
-  c->startTrigger.triggerType = TRIG_ABSTIME;
   c->startTime = start_time;
-  c->pOutput = (rfc_bleInitiatorOutput_t *)output;
-#endif
+  c->startTrigger.triggerType = TRIG_ABSTIME;
 }
 /*---------------------------------------------------------------------------*/
 void

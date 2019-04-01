@@ -17,7 +17,7 @@ enum { ADV_TYPE = 0xff };
 
 extern const struct ble_hal_driver ble_hal;
 
-void eu64_to_ble_addr(uint8_t *dst, const uint8_t *src) {
+static void eui64_to_ble_addr(uint8_t *dst, const uint8_t *src) {
   dst[0] = src[0];
   dst[1] = src[1];
   dst[2] = src[2];
@@ -39,7 +39,7 @@ static void send_packet(mac_callback_t sent, void *ptr) {
     mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   } else {
     uint8_t ble_addr[BLE_ADDR_SIZE];
-    eu64_to_ble_addr(ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
+    eui64_to_ble_addr(ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
     ble_hal.adv_ext(ble_addr, packetbuf_dataptr(), data_len);
     mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   }
@@ -67,7 +67,7 @@ static int max_payload() {
 }
 
 static void init() {
-  int result = ble_hal.reset();
+  ble_hal.reset();
   NETSTACK_MAC.on();
 }
 

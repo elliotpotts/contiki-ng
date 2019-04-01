@@ -156,7 +156,7 @@ rf_core_send_cmd(uint32_t cmd, uint32_t *status)
   uint32_t timeout_count = 0;
   bool interrupts_disabled;
   bool is_radio_op = false;
-      
+
   /*
    * If cmd is 4-byte aligned, then it's either a radio OP or an immediate
    * command. Clear the status field if it's a radio OP

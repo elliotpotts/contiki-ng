@@ -84,7 +84,7 @@
 #define NETSTACK_MAC     csma_driver
 #elif MAC_CONF_WITH_TSCH
 #define NETSTACK_MAC     tschmac_driver
-#elif MAC_CONF_WITH_BLE
+#elif MAC_CONF_WITH_BLE_L2CAP
 #define NETSTACK_MAC   ble_l2cap_driver
 #elif MAC_CONF_WITH_BLE_CL
 #define NETSTACK_MAC   ble_cl_driver

@@ -1,4 +1,4 @@
-CONTIKI_PROJECT = server
+CONTIKI_PROJECT = root
 all: $(CONTIKI_PROJECT)
 CONTIKI = ../..
 
@@ -9,7 +9,8 @@ MAKE_MAC = MAKE_MAC_BLE_CL
 MAKE_NET = MAKE_NET_IPV6
 MAKE_ROUTING = MAKE_ROUTING_RPL_LITE
 
-MODULES += os/services/shell
+#MODULES += os/services/shell
+MODULES += os/net/ipv6/multicast
 
 include $(CONTIKI)/Makefile.identify-target
 MODULES_REL += $(TARGET)
