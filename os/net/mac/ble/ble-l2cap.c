@@ -285,7 +285,7 @@ init(void)
 
   #if UIP_CONF_ROUTER
   int conn_interval;
-  const unsigned char ble_peer_addr[BLE_ADDR_SIZE] = {0xCC, 0x78, 0xAB, 0x71, 0x40, 0x07};
+  const unsigned char ble_peer_addr[BLE_ADDR_SIZE] = {0xB0, 0x91, 0x22, 0x69, 0xFC, 0x5A};
   
   /* convert to the BLE controller units (in 1.25 ms) */
   conn_interval = (int)(((double)(CONNECTION_INTERVAL_MS)) / 1.25);

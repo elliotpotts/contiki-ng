@@ -1039,9 +1039,9 @@ initiator_event(struct rtimer *t, void *ptr)
   whitelist[1].addressHi = 0x54 << 24
                          | 0x6C << 16
                          | 0x0E << 8
-                         | 0x83;
-  whitelist[1].address = 0x3F << 8
-                       | 0xE6;
+                         | 0x9B;
+  whitelist[1].address = 0x63 << 8
+                       | 0x53;
 
   scaHop = (conn->sca << 5) + conn->hop;
 
