@@ -38,6 +38,9 @@
  *    Jinyan BAI <onefreebjy@outlook.com>
  */
 /*---------------------------------------------------------------------------*/
+#ifdef PROJECT_CONF_PATH
+#include PROJECT_CONF_PATH
+#endif /* PROJECT_CONF_PATH */
 
 #include "lpm.h"
 

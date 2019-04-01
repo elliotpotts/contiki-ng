@@ -1,7 +1,14 @@
+#ifdef PROJECT_CONF_PATH
+#include PROJECT_CONF_PATH
+#endif /* PROJECT_CONF_PATH */
+
+#if !RADIO_CONF_BLE5
+#error Connectionless BLE requies BLE5 support
+#endif
+
 #include "lpm.h"
 
-#include "sys/rtimer.h"
-
+#include "os/sys/rtimer.h"
 #include "os/dev/ble-hal.h"
 #include "dev/oscillators.h"
 
@@ -28,11 +35,7 @@
 #include <string.h>
 
 #include "rf-core/ble-hal/rf-ble-cmd.h"
-#if RADIO_CONF_BLE5
 #include "rf_patches/rf_patch_cpe_bt5.h"
-#else
-#error Connectionless BLE radio requies BLE5 support
-#endif
 
 #include "sys/log.h"
 #define LOG_MODULE "BLE-HAL"
@@ -45,6 +48,15 @@ static uint8_t request(void) {
   return LPM_MODE_MAX_SUPPORTED;
 }
 LPM_MODULE(cc26xx_ble_lpm_module, request, NULL, NULL, LPM_DOMAIN_NONE);
+
+// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.5
+typedef struct {
+  uint8_t channel_ix:6;
+  uint8_t ca:1;
+  uint8_t offset_units:1;
+  uint16_t aux_offset:13;
+  uint8_t aux_phy:3;
+} __attribute__ ((packed)) aux_ptr_t;
 
 /* SCANNER data structures */
 #define SCAN_RX_BUFFERS_DATA_LEN       260
@@ -294,75 +306,80 @@ static void init_scanner(ble_scanner_t* scanner) {
 
 #define BLE5_ADV_DATA_SIZE_MAX 255
 
-static void scan_rx(struct rtimer *t, void *userdata) {
-  ble_scanner_t *param = (ble_scanner_t *)userdata;
-  
-  while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
-    uint8_t *rx_data = param->rx_queue_current->data;
-    uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */
-                                     - 2 /* bAppendStatus = 2 (was 1 octec for legacy BLE) */;
-    uint8_t header = *rx_data++;
-    uint8_t *payload = rx_data;
-    uint8_t *payload_end = payload + payload_len;
-    rfc_bleRxStatus_t status;
-    memcpy(&status, payload_end, sizeof(rfc_bleRxStatus_t));
+static void process_1_ind(uint8_t *rx_data) {
+  uint8_t payload_len = *rx_data++ - 1 /* lenSz = 1 -> 8 bytes for len */
+    - 2 /* bAppendStatus = 2 (was 1 octet for legacy BLE) */;
+  uint8_t header = *rx_data++;
+  uint8_t *payload = rx_data;
+  uint8_t *payload_end = payload + payload_len;
+  rfc_bleRxStatus_t status;
+  memcpy(&status, payload_end, sizeof(rfc_bleRxStatus_t));
 
-    uint8_t pdu_type = header & 0b00001111;
-    if (pdu_type == 7 && !status.status.bIgnore && !status.status.bCrcErr) {
-      uint8_t ext_header_len = *payload++;
-      uint8_t* ext_header_end = payload + ext_header_len;
-      bool adv_a_present = 0;
-      uint8_t adv_a[BLE_ADDR_SIZE];
-      linkaddr_t sender_addr;
-	
-      bool tgt_a_present = 0;
-      //uint8_t tgt_a[BLE_ADDR_SIZE];
-	
-      bool adi_present = 0;
-      bool aux_ptr_present = 0;
-      bool sync_info_present = 0;
-      bool tx_power_present = 0;
-      if (ext_header_len > 0) {
-	uint8_t ext_header_flags = *payload++;
-	  
-	adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
-	if (adv_a_present) {
-	  for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
-	  ble_addr_to_eui64(sender_addr.u8, adv_a);
-	}
+  uint8_t pdu_type = header & 0b00001111;
+  if (pdu_type == 7 && !status.status.bIgnore && !status.status.bCrcErr) {
+    uint8_t ext_header_len = *payload++;
+    uint8_t* ext_header_end = payload + ext_header_len;
+    bool adv_a_present = 0;
+    uint8_t adv_a[BLE_ADDR_SIZE];
+    linkaddr_t sender_addr;
 
-	tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
-	if (tgt_a_present) {
-	  for (int i = 0; i < BLE_ADDR_SIZE; i++) {
-	    //tgt_a[i] = *payload++; we're not using tgt_a so just move payload forward:
-	    payload++;
-	  }
-	}
+    bool tgt_a_present = false;
+    bool adi_present = 0;
+    bool aux_ptr_present = 0;
+    bool sync_info_present = 0;
+    bool tx_power_present = 0;
+    if (ext_header_len > 0) {
+      uint8_t ext_header_flags = *payload++;
 	  
-	adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
-	if (adi_present) payload += 16;
-	  
-	aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
-	if (aux_ptr_present) payload += 24;
-	  
-	sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
-	if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
-	    
-	tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
-	if (tx_power_present) payload += 1;
-
-	payload = ext_header_end;
+      adv_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADV_A;
+      if (adv_a_present) {
+	for (int i = 0; i < BLE_ADDR_SIZE; i++) adv_a[i] = *payload++;
+	ble_addr_to_eui64(sender_addr.u8, adv_a);
       }
 
+      tgt_a_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TGT_A;
+      if (tgt_a_present) {
+	for (int i = 0; i < BLE_ADDR_SIZE; i++) payload++;
+      }
+	  
+      adi_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_ADI;
+      if (adi_present) payload += 16;
+	  
+      aux_ptr_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_AUX_PTR;
+      if (aux_ptr_present) payload += 24;
+	  
+      sync_info_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_SYNC_INFO;
+      if (sync_info_present) payload += (13 + 1 + 2 + 2 + 37 + 3 + 4 + 3 + 2);
+	    
+      tx_power_present = ext_header_flags & BLE5_ADV_EXT_HDR_FLAG_TX_POWER;
+      if (tx_power_present) payload += 1;
+
+      payload = ext_header_end;
+    }
+
+    char advdata[400];
+    char* advdata_it = &advdata[0];
+    while (payload != payload_end) *advdata_it++ = *payload++;
+    *advdata_it++ = '\0';
+    LOG_DBG("Advdata:\n%s\n", advdata);
+
+    /*
       packetbuf_clear();
       memcpy(packetbuf_dataptr(), payload, payload_end - payload);
       packetbuf_set_datalen(payload_end - payload);
       packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
       packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &sender_addr);
       NETSTACK_MAC.input();
-    }
+    */
+  }
+}
 
-    /* free current entry (clear BLE data length & reset status) */
+static void scan_rx(struct rtimer *t, void *userdata) {
+  ble_scanner_t *param = (ble_scanner_t *)userdata;
+  
+  while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
+    process_1_ind(param->rx_queue_current->data);
+    /* free current entry */
     param->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
     param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
   }
