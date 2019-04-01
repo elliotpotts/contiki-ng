@@ -23,6 +23,14 @@ typedef enum {
 
 enum { BLE5_ADV_PDU_PAYLOAD_MAX_SIZE = 255 };
 
+enum {
+  ble_adv_pdu_hdr_type =  0b00001111,
+  ble_adv_pdu_hdr_chsel = 0b00100000,
+  ble_adv_pdu_hdr_txadd = 0b01000000,
+  ble_adv_pdu_hdr_rxadd = 0b10000000
+};
+
+
 typedef enum {
   ble5_clock_accuracy_30us = 0,
   ble5_clock_accuracy_300us = 1

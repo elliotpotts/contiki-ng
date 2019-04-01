@@ -225,7 +225,7 @@ static void init_scanner(ble_scanner_t* scanner) {
     e->pNextEntry = (uint8_t*) &scanner->rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
     e->status = DATA_ENTRY_PENDING;
     e->config.type = 0;
-    e->config.lenSz = 1;
+    e->config.lenSz = 0;
     e->length = SCAN_RX_BUFFERS_DATA_LEN;
   }
   scanner->rx_queue.pCurrEntry = (uint8_t*) &scanner->rx_buffers[0].entry;
@@ -264,7 +264,8 @@ static void init_scanner(ble_scanner_t* scanner) {
     .rxConfig = {
       .bAutoFlushIgnored = 1,
       .bAutoFlushCrcErr = 1,
-      .bAutoFlushEmpty = 1
+      .bAutoFlushEmpty = 1,
+      .bIncludeLenByte = 1,
       //.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
     },
     .scanConfig = {
@@ -360,11 +361,11 @@ static void recv_ext_adv(uint8_t *payload, uint8_t *payload_end) {
 //static void recv_aux
 
 static void recv_adv_pdu(uint8_t *rx_data) {
-  uint8_t payload_len = *rx_data++ - 1; /* lenSz = 1 -> 8 bytes for len */
-  uint8_t header = *rx_data++;
+  uint8_t header_lo = *rx_data++;
+  uint8_t payload_len = *rx_data++;
   uint8_t *payload = rx_data;
   uint8_t *payload_end = payload + payload_len;
-  switch (header & 0b00001111) {
+  switch (header_lo & ble_adv_pdu_hdr_type) {
   case ble_adv_ext_ind:
   case ble_aux_adv_ind:
   case ble_aux_sync_ind:
