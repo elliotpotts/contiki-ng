@@ -59,7 +59,6 @@ struct adv_link_t {
 typedef struct {
   /* state */
   bool scanning;
-  uint8_t current_sid;
   rtimer_clock_t scan_start;
   struct rtimer timer;
   /* data */
@@ -149,64 +148,105 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   if (should_restart_scan) {
     set_scan_enable(0, 0);
   }
-  // max pdu size = 255
-  // ext header size = 1
-  //   +- flags = 1
-  //   +- AdvA  = 6
-  //   +- TgtA  = 6
-  int header_len = 1 + 6 + (tgt_bd_addr ? 6 : 0);
-  int payload_len = header_len + adv_data_len;
-  if (payload_len > BLE5_ADV_PDU_PAYLOAD_MAX_SIZE) {
-    LOG_ERR("attempt to send adv_ext_ind payload of %d, max is 255.\n", adv_data_len);
-    return BLE_RESULT_ERROR;
-  }
 
-  rfc_ble5ExtAdvEntry_t adv_pkt = {
-    .extHdrInfo = {
-      .length = header_len,
-      .advMode = 0,
-    },
-    .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a
-                 | (tgt_bd_addr ? ble5_adv_ext_hdr_flag_tgt_a : 0),
-    .extHdrConfig = {
-      .bSkipAdvA = 1
-    },
-    .advDataLen = adv_data_len,
-    .pExtHeader = tgt_bd_addr ? (uint8_t*) tgt_bd_addr : NULL,
-    .pAdvData = (uint8_t*) adv_data //TODO: WARNING: double check that this is allowed (re: const cast). spec says only system CPU writes
-  };
-  
   uint8_t my_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(my_addr);
 
-  // Construct parameters and command
-  rfc_ble5AdvExtPar_t params = {
-    .pAdvPkt = (uint8_t*) &adv_pkt,
-    .auxPtrTargetTime = TRIG_NEVER,
-    .pDeviceAddress = (uint16_t*)&my_addr[0]
-  };
-  rfc_bleAdvOutput_t output = { 0 };
-  rfc_CMD_BLE5_ADV_EXT_t cmd = {
-    .commandNo = CMD_BLE5_ADV_EXT,
-    .startTrigger = {
-      .triggerType = TRIG_NOW,
-    },
-    .condition = {
-      .rule = COND_NEVER
-    },
-    .channel = 37,
-    .pParams = &params,
-    .pOutput = &output
-  };
+  uint8_t set_id = random_rand() % UINT8_MAX;
 
-  // Submit command
-  if(on() != BLE_RESULT_OK) {
-    LOG_DBG("could not enable rf core prior to ADV_EXT \n");
-    return BLE_RESULT_ERROR;
+  /* PACKET 1: EXT_ADV_IND */
+  // max pdu size = 255
+  // ext header size = 1
+  //   + flags  = 1
+  //   + AdvA   = 6
+  //   + TgtA   = 6
+  //   + Adi    = 2
+  //   + AuxPtr = 3
+  {
+    uint8_t header[64];
+    uint8_t *header_out = header;
+
+    //flags
+    *header_out++ = ble5_adv_ext_hdr_flag_adv_a
+                  | (tgt_bd_addr ? ble5_adv_ext_hdr_flag_tgt_a : 0)
+                  | ble5_adv_ext_hdr_flag_adi;
+
+    //adva
+    for (int i = 0; i < BLE_ADDR_SIZE; i++) {
+      *header_out++ = my_addr[i];
+    }
+
+    //tgta
+    if (tgt_bd_addr) {
+      for (int i = 0; i < BLE_ADDR_SIZE; i++) {
+	*header_out++ = tgt_bd_addr[i];
+      }
+    }
+
+    //adi
+    adi_t adi = {
+      .set_id = set_id,
+      .data_id = random_rand()
+    };
+    memcpy(header_out, &adi, sizeof(adi));
+    header_out += sizeof(adi);
+
+    //auxptr
+    aux_ptr_t aux_ptr = {
+      .channel_ix = 20,
+      .clock_accuracy = 0,
+      .offset_units = 1,
+      .aux_offset = 1600,
+      .aux_phy = 0
+    };
+    memcpy(header_out, &aux_ptr, sizeof(aux_ptr));
+    header_out += sizeof(aux_ptr);
+
+    int header_len = header_out - header;
+    //int payload_len = header_len + adv_data_len;
+    rfc_ble5ExtAdvEntry_t adv_pkt = {
+      .extHdrInfo = {
+	.length = header_len,
+	.advMode = 0,
+      },
+      .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a
+                   | (tgt_bd_addr ? ble5_adv_ext_hdr_flag_tgt_a : 0)
+                   | ble5_adv_ext_hdr_flag_adi
+                   | ble5_adv_ext_hdr_flag_aux_ptr,
+      .advDataLen = 0,
+      .pExtHeader = header,
+      .pAdvData = NULL
+    };
+
+    // Construct parameters and command
+    rfc_ble5AdvExtPar_t params = {
+      .pAdvPkt = (uint8_t*) &adv_pkt,
+      .auxPtrTargetTime = TRIG_NEVER
+//      .pDeviceAddress = (uint16_t*)&my_addr[0]
+    };
+    rfc_bleAdvOutput_t output = { 0 };
+    rfc_CMD_BLE5_ADV_EXT_t cmd = {
+      .commandNo = CMD_BLE5_ADV_EXT,
+      .startTrigger = {
+	.triggerType = TRIG_NOW,
+      },
+      .condition = {
+	.rule = COND_NEVER
+      },
+      .channel = 37,
+      .pParams = &params,
+      .pOutput = &output
+    };
+
+    // Submit command
+    if(on() != BLE_RESULT_OK) {
+      LOG_DBG("could not enable rf core prior to ADV_EXT \n");
+      return BLE_RESULT_ERROR;
+    }
+    rf_ble_cmd_send((uint8_t*) &cmd);
+    rf_ble_cmd_wait((uint8_t*) &cmd);
   }
-  rf_ble_cmd_send((uint8_t*) &cmd);
-  rf_ble_cmd_wait((uint8_t*) &cmd);
-  off();
+  /* PACKET 2: AUX_ADV_IND */
 
   if (should_restart_scan) {
     set_scan_enable(1, 0);
@@ -218,13 +258,10 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 /* Scanning */
 static void init_scanner(ble_scanner_t* scanner) {
   memset(scanner, 0, sizeof(ble_scanner_t));
-  scanner->current_sid = random_rand() % UINT8_MAX;
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
     rfc_dataEntry_t* e = &scanner->rx_buffers[i].entry;
     e->pNextEntry = (uint8_t*) &scanner->rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
     e->status = DATA_ENTRY_PENDING;
-    e->config.type = 0;
-    e->config.lenSz = 0;
     e->length = SCAN_RX_BUFFERS_DATA_LEN;
   }
   scanner->rx_queue.pCurrEntry = (uint8_t*) &scanner->rx_buffers[0].entry;
@@ -341,24 +378,17 @@ static bool scanner_remembers(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
     if (l->populated && l->pdu.adi_present &&
 	l->pdu.adi.set_id == pdu->adi.set_id &&
 	l->pdu.adi.data_id == pdu->adi.data_id) {
-      LOG_DBG("scanner remembers %u.%u\n", pdu->adi.set_id, pdu->adi.data_id);
       return true;
     }
   }
   return false;
 }
 
-static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type, uint8_t *payload, uint8_t *payload_end) {
-  adv_link_t* new_link = scanner_make_link(scanner);
-  if (!new_link) {
-    LOG_ERR("No space to receive an ind!\n");
-    return;
-  }
-    
-  ext_adv_pdu* pdu = &new_link->pdu;
-  pdu->type = type;
+static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type, uint8_t *payload, uint8_t *payload_end) { 
+  ext_adv_pdu pdu = {0};
+  pdu.type = type;
 
-  pdu->adv_mode = *payload & 0b11000000;
+  pdu.adv_mode = *payload & 0b11000000;
   const uint8_t ext_header_len = *payload++ & 0b00111111;
   uint8_t* const ext_header_end = payload + ext_header_len;
   
@@ -366,39 +396,39 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
     const uint8_t ext_header_flags = *payload++;
     
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adv_a) {
-      pdu->adv_a_present = true;
-      memcpy(pdu->adv_a, payload, BLE_ADDR_SIZE);
+      pdu.adv_a_present = true;
+      memcpy(pdu.adv_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
-      pdu->tgt_a_present = true;
-      memcpy(pdu->tgt_a, payload, BLE_ADDR_SIZE);
+      pdu.tgt_a_present = true;
+      memcpy(pdu.tgt_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
       //TODO: make sure we're the target
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
-      pdu->adi_present = true;
-      memcpy(&pdu->adi, payload, sizeof(pdu->adi));
-      payload += sizeof(pdu->adi);
+      pdu.adi_present = true;
+      memcpy(&pdu.adi, payload, sizeof(pdu.adi));
+      payload += sizeof(pdu.adi);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
-      pdu->aux_ptr_present = true;
-      memcpy(&pdu->aux_ptr, payload, sizeof(pdu->aux_ptr));
-      payload += sizeof(pdu->aux_ptr);
+      pdu.aux_ptr_present = true;
+      memcpy(&pdu.aux_ptr, payload, sizeof(pdu.aux_ptr));
+      payload += sizeof(pdu.aux_ptr);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
-      pdu->sync_info_present = true;
-      memcpy(&pdu->sync_info, payload, sizeof(pdu->sync_info));
-      payload += sizeof(pdu->sync_info);
+      pdu.sync_info_present = true;
+      memcpy(&pdu.sync_info, payload, sizeof(pdu.sync_info));
+      payload += sizeof(pdu.sync_info);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
-      pdu->tx_power_present = true;
-      pdu->tx_power = *payload++;
+      pdu.tx_power_present = true;
+      pdu.tx_power = *payload++;
     }
   }
 
@@ -409,42 +439,42 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
   uint8_t *adv_data_begin = ext_header_end;
 
   // have we already stored this pdu?
-  if (scanner_remembers(scanner, pdu)) {
+  if (scanner_remembers(scanner, &pdu)) {
     LOG_DBG("already seen; dropping\n");
-    goto drop; // yes, we don't need to see it gain.
+    return; // yes, we don't need to see it gain.
   };
-
+  // is there an adi with which to associate a chain?
+  if (!pdu.adi_present) {
+    // no indication of which chain it belongs to, drop it
+    LOG_DBG("no adi with which to continue chain; dropping\n");
+    return;
+  }
   // is there an adv a?
-  /* if (!pdu->adv_a_present) { */
-  /*   goto drop; // we only care about packets we know the sender of */
+  /* if (!pdu.adv_a_present) { */
+  /*   return; // we only care about packets we know the sender of */
   /* } */
   
   // are we starting a new chain or continuing a previous one?
   if (type == 7) {
     // starting a new chain
-    if (!pdu->adi_present || !pdu->aux_ptr_present) {
-      LOG_DBG("no aux or no adi; dropping\n");
-      goto drop; // either no aux ptr therefore no data or no adi therefore no means of identification
+    if (!pdu.aux_ptr_present) {
+      LOG_DBG("can't start a new chain without an aux ptr; dropping\n");
+      return; // either no aux ptr therefore no data or no adi therefore no means of identification
     }
     // don't drop - start tracking this chain
-    LOG_DBG("tracking new chain %u\n", pdu->adi.set_id);
+    LOG_DBG("tracking new chain %u\n", pdu.adi.set_id);
     return;
   } else {
     // continuing or finishing an existing chain
-    if (!pdu->adi_present) {
-      // no indication of which chain it belongs to, drop it
-      LOG_DBG("no adi with which to continue chain; dropping\n");
-      goto drop;
-    }
-    adv_link_t* head = scanner_get_chain_head(scanner, pdu);
+    adv_link_t* head = scanner_get_chain_head(scanner, &pdu);
     if (head == NULL) {
       // we didn't see the start of the chain, drop it
       LOG_DBG("missed chain head; dropping\n");
-      goto drop;
+      return;
     }
     // if we're starting to send just adv data, make sure there is an adv a somewhere in the chain
     uint8_t* adv_a = NULL;
-    if (pdu->type == ble_aux_chain_ind) {
+    if (pdu.type == ble_aux_chain_ind) {
       for (adv_link_t* x = head; x != NULL; x = x->next_in_chain) {
 	if (x->pdu.adv_a_present) {
 	  adv_a = x->pdu.adv_a;
@@ -453,35 +483,30 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
       if (!adv_a) {
 	// they haven't sent an adv a yet and they've missed their chance
 	LOG_DBG("chain never sent adv a; dropping\n");
-	scanner_free_chain(scanner, new_link);
+	scanner_free_chain(scanner, head);
 	return;
       }
     }
     // are we finishing or continuing?
-    if (pdu->aux_ptr_present) {
+    if (pdu.aux_ptr_present) {
       // continuing, so keep adv_data
-      pdu->acad_len = acad_end - acad_begin;
-      memcpy(&pdu->acad, acad_begin, pdu->acad_len);
-      pdu->adv_data_len = adv_data_end - adv_data_begin;
-      memcpy(&pdu->adv_data, adv_data_begin, pdu->adv_data_len);
+      pdu.acad_len = acad_end - acad_begin;
+      memcpy(&pdu.acad, acad_begin, pdu.acad_len);
+      pdu.adv_data_len = adv_data_end - adv_data_begin;
+      memcpy(&pdu.adv_data, adv_data_begin, pdu.adv_data_len);
       // point last link to our new link
-      adv_chain_append(head, new_link);
-      LOG_DBG("continuing chain %u\n", pdu->adi.set_id);
+      //adv_chain_append(head, new_link);
+      LOG_DBG("continuing chain %u\n", pdu.adi.set_id);
       return;
     } else {
       // finishing
       // find the sender address
-      LOG_DBG("finishing chain %u\n", pdu->adi.set_id);
-      scanner_free_chain(scanner, new_link);
+      LOG_DBG("finishing chain %u\n", pdu.adi.set_id);
+      scanner_free_chain(scanner, head);
       return;
     }
   }
-  LOG_DBG("unaccounted situation! (this should never happen)\n");
-  return;
-drop:
-  free_adv_link(new_link);
-  LOG_DBG("[dropped]\n");
-  return;
+  LOG_DBG("unaccounted for!\n");
 }
 
 static void scan_rx(struct rtimer *t, void *userdata) {
