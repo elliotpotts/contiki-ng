@@ -2,13 +2,8 @@
 #define BLE5_H_
 
 typedef enum {
-  ble_adv_ind,
-  ble_adv_direct_ind,
-  ble_adv_nonconn_ind,
-  ble_adv_scan_ind,
   ble_adv_ext_ind,
   ble_aux_adv_ind,
-  ble_aux_sync_ind,
   ble_aux_chain_ind
 } ble_adv_pdu_type_t;
 
