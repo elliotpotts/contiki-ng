@@ -51,10 +51,8 @@ typedef struct {
 
 typedef struct {
   bool populated;
-  uint8_t sid;
-  uint8_t did;
-  scan_data_entry *data;
-} adv_data_entry;
+  ext_adv_pdu pdu;
+} adv_entry_t;
 
 typedef struct {
   /* state */
@@ -66,7 +64,7 @@ typedef struct {
   dataQueue_t rx_queue;
   scan_data_entry rx_buffers[SCAN_RX_BUFFERS_NUM];
   scan_data_entry *rx_queue_current;
-  adv_data_entry adv_datas[10];
+  adv_entry_t adv_set_data[SCAN_RX_BUFFERS_NUM];
   /* radio interface */
   uint8_t ble_addr[BLE_ADDR_SIZE];
   rfc_bleWhiteListEntry_t whitelist[5];
@@ -74,7 +72,6 @@ typedef struct {
   rfc_ble5ScanInitOutput_t output;
   rfc_CMD_BLE5_SCANNER_t cmd;
 } ble_scanner_t;
-
 static void init_scanner(ble_scanner_t* scanner);
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates);
 static ble_scanner_t g_scanner;
@@ -295,101 +292,161 @@ static void init_scanner(ble_scanner_t* scanner) {
   };
 }
 
-static void recv_ext_adv(uint8_t *payload, uint8_t *payload_end) {
-  packetbuf_clear();
-  packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
-  
-  const uint8_t ext_header_len = *payload++;
+static ext_adv_pdu parse_ext_adv(ble_adv_pdu_type_t type, uint8_t *payload, uint8_t *payload_end) {
+  ext_adv_pdu pdu = {0};
+  pdu.type = type;
+
+  pdu.adv_mode = *payload & 0b11000000;
+  const uint8_t ext_header_len = *payload++ & 0b00111111;
   uint8_t* const ext_header_end = payload + ext_header_len;
   
   if (ext_header_len > 0) {
     const uint8_t ext_header_flags = *payload++;
     
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adv_a) {
-      linkaddr_t sender_addr;
-      ble_addr_to_eui64(sender_addr.u8, payload);
-      packetbuf_set_addr(PACKETBUF_ADDR_SENDER, &sender_addr);
+      pdu.adv_a_present = true;
+      memcpy(pdu.adv_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
-      /* + we are using filtering
-         + therefore we already know adv_a is our own address
-         + therefore just skip it */
+      pdu.tgt_a_present = true;
+      memcpy(pdu.tgt_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
     }
-    
+
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
-      adi_t adi;
-      memcpy(&adi, payload, sizeof(adi));
-      payload += sizeof(adi);
-      (void)adi; /*TODO: make use of adi */
+      pdu.adi_present = true;
+      memcpy(&pdu.adi, payload, sizeof(pdu.adi));
+      payload += sizeof(pdu.adi);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
-      aux_ptr_t aux_ptr;
-      memcpy(&aux_ptr, payload, sizeof(aux_ptr));
-      payload += sizeof(aux_ptr);
-      (void)aux_ptr; /*TODO: make use of aux_ptr */
+      pdu.aux_ptr_present = true;
+      memcpy(&pdu.aux_ptr, payload, sizeof(pdu.aux_ptr));
+      payload += sizeof(pdu.aux_ptr);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
-      sync_info_t sync_info;
-      memcpy(&sync_info, payload, sizeof(sync_info));
-      payload += sizeof(sync_info);
-      (void)sync_info; /*TODO: make use of sync info */
+      pdu.sync_info_present = true;
+      memcpy(&pdu.sync_info, payload, sizeof(pdu.sync_info));
+      payload += sizeof(pdu.sync_info);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
-      uint8_t tx_power = *payload++;
-      (void)tx_power; /*TODO: make use of tx_power */
+      pdu.tx_power_present = true;
+      pdu.tx_power = *payload++;
     }
 
-    uint8_t *acad = payload;
-    uint8_t *acad_end = ext_header_end;
-    (void)acad;
-    (void)acad_end; /*TODO: make use of acad */
+    pdu.acad_len = ext_header_end - payload;
+    memcpy(pdu.acad, payload, pdu.acad_len);
   }
-  uint8_t* const adv_data = ext_header_end;
-  uint8_t* const adv_data_end = payload_end;
+  pdu.adv_data_len = payload_end - ext_header_end;
+  memcpy(pdu.adv_data, ext_header_end, pdu.adv_data_len);
 
-  memcpy(packetbuf_dataptr(), adv_data, adv_data_end - adv_data);
-  packetbuf_set_datalen(adv_data_end - adv_data); //TODO: change when aux ptr comes into gay
-  NETSTACK_MAC.input();
+  return pdu;
 }
 
-//static void recv_aux
+static adv_entry_t* scanner_alloc_adv_entry(ble_scanner_t* scanner) {
+  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
+    if (!scanner->adv_set_data[i].populated) {
+      return &scanner->adv_set_data[i];
+    }
+  }
+  return NULL;
+}
 
-static void recv_adv_pdu(uint8_t *rx_data) {
-  uint8_t header_lo = *rx_data++;
-  uint8_t payload_len = *rx_data++;
-  uint8_t *payload = rx_data;
-  uint8_t *payload_end = payload + payload_len;
-  switch (header_lo & ble_adv_pdu_hdr_type) {
-  case ble_adv_ext_ind:
-  case ble_aux_adv_ind:
-  case ble_aux_sync_ind:
-  case ble_aux_chain_ind:
-    recv_ext_adv(payload, payload_end);
-  default: break; //LOG_ERR("Unknown adv type\n");
+static bool scanner_remembers(ble_scanner_t* scanner, ext_adv_pdu pdu) {
+  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
+    if (scanner->adv_set_data[i].populated &&
+	scanner->adv_set_data[i].pdu.adi.set_id == pdu.adi.set_id &&
+	scanner->adv_set_data[i].pdu.adi.data_id == pdu.adi.data_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static adv_entry_t* scanner_get_chain_head(ble_scanner_t* scanner, ext_adv_pdu pdu) {
+  for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
+    if (scanner->adv_set_data[i].populated &&
+	scanner->adv_set_data[i].pdu.adi.set_id == pdu.adi.set_id &&
+	scanner->adv_set_data[i].pdu.type == ble_adv_ext_ind) {
+      return &scanner->adv_set_data[i];
+    }
+  }
+  return NULL;
+}
+
+static void recv_adv_ext_ind(ext_adv_pdu pdu) {
+  if (pdu.adv_mode != 0 || !pdu.adi_present || !pdu.aux_ptr_present) {
+    LOG_DBG("Can't receive from ADV_EXT_IND where: adv_mode => %u, pdu.adi_present => %u, pdu.aux_ptr_present => %u\n",
+	    pdu.adv_mode, pdu.adi_present, pdu.aux_ptr_present);
+    return;
+  }
+  adv_entry_t *entry = scanner_alloc_adv_entry(&g_scanner);
+  if (!entry) LOG_ERR("Not enough room for ADV_EXT_IND!\n");
+  entry->pdu = pdu;
+  entry->populated = true;
+}
+
+static void recv_aux_adv_ind(ext_adv_pdu pdu) {
+  // Ensure we have received an ADV_EXT_IND corresponding to this AUX_ADV_IND
+  if (scanner_get_chain_head(&g_scanner, pdu) == NULL) {
+    // we're recieving packets half way through, drop this and don't pursue
+    return;
+  } else if (pdu.aux_ptr_present) {
+    // this is part of a series of INDs. Remember this PDU and listen for another
+    adv_entry_t *entry = scanner_alloc_adv_entry(&g_scanner);
+    if (!entry) LOG_ERR("Not enough room for AUX_ADV_IND!\n");
+    entry->pdu = pdu;
+    entry->populated = true;
+  } else {
+    // this is the first and last AUX_ADV_IND in this chain. Collect pieces and give to upper layer
+  }
+}
+
+static void recv_aux_chain_ind(ext_adv_pdu pdu) {
+  if (scanner_get_chain_head(&g_scanner, pdu) == NULL) {
+    return;
+  } else if (pdu.aux_ptr_present) {
+    adv_entry_t *entry = scanner_alloc_adv_entry(&g_scanner);
+    if (!entry) LOG_ERR("Not enough room for AUX_CHAIN_IND\n");
+    entry->pdu = pdu;
+    entry->populated = true;
   }
 }
 
 static void scan_rx(struct rtimer *t, void *userdata) {
-  ble_scanner_t *param = (ble_scanner_t *)userdata;
+  ble_scanner_t *scanner = (ble_scanner_t *)userdata;
+
+  (void)recv_aux_adv_ind;
+  (void)recv_aux_chain_ind;
   
-  while (param->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
-    recv_adv_pdu(param->rx_queue_current->data);
+  while (scanner->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
+    uint8_t *rx_data = scanner->rx_queue_current->data;
+    uint8_t header_lo = *rx_data++;
+    ble_adv_pdu_type_t pdu_type = header_lo & ble_adv_pdu_hdr_type;
+    uint8_t payload_len = *rx_data++;
+    uint8_t *payload = rx_data;
+    uint8_t *payload_end = payload + payload_len;
+    switch (pdu_type) {
+    case ble_adv_ext_ind:
+    case ble_aux_adv_ind:
+    case ble_aux_chain_ind:
+      recv_ext_adv(parse_ext_adv(pdu_type, payload, payload_end));
+    default: break;
+    }
     /* free current entry */
-    param->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
-    param->rx_queue_current = (scan_data_entry*) param->rx_queue_current->entry.pNextEntry;
+    scanner->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
+    scanner->rx_queue_current = (scan_data_entry*) scanner->rx_queue_current->entry.pNextEntry;
   }
 
-  if (param->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
+  if (scanner->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_ERR("Scan rx buffer is out of space!\n");
     g_scanner.scanning = false;
   } else {
-    rtimer_set(&param->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, param);
+    rtimer_set(&scanner->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, scanner);
   }
 }
 

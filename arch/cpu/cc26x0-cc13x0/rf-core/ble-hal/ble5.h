@@ -64,4 +64,25 @@ typedef struct {
   uint8_t event_cnt:2;
 } __attribute__ ((packed)) sync_info_t;
 
+typedef struct {
+  ble_adv_pdu_type_t type;
+  uint8_t adv_mode;
+  bool adv_a_present;
+  uint8_t adv_a[BLE_ADDR_SIZE];
+  bool tgt_a_present;
+  uint8_t tgt_a[BLE_ADDR_SIZE];
+  bool adi_present;
+  adi_t adi;
+  bool aux_ptr_present;
+  aux_ptr_t aux_ptr;
+  bool sync_info_present;
+  sync_info_t sync_info;
+  bool tx_power_present;
+  uint8_t tx_power;
+  uint8_t acad_len;
+  uint8_t acad[63];
+  uint8_t adv_data_len;
+  uint8_t adv_data[255];
+} ext_adv_pdu;
+
 #endif /* BLE5_H_ */
