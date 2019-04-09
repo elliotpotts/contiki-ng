@@ -26,9 +26,9 @@
 
 /* network layer settings */
 #define UIP_CONF_ROUTER                         1
-#define UIP_CONF_ND6_SEND_RA                    1
-#define UIP_CONF_ND6_SEND_NA                    1
-#define UIP_CONF_ND6_SEND_NS                    1
+#define UIP_CONF_ND6_SEND_RA                    0
+#define UIP_CONF_ND6_SEND_NA                    0
+#define UIP_CONF_ND6_SEND_NS                    0
 
 /* 6LoWPAN settings */
 #define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         255
