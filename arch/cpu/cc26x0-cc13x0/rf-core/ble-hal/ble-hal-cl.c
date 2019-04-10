@@ -185,13 +185,18 @@ void write_ext_adv_hdr(uint8_t *out,
   }
 }
 
+uint8_t hello_world[] = "Hello, World!";
+
 /* Advertising */
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
   set_scan_enable(0, 0);
 
   /* Common */
   rfc_bleAdvOutput_t output = { 0 };
-  long long unsigned aux_target_time = ticks_to_unit(ticks_from_unit(15, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
+  
+  //rtimer_clock_t base = RTIMER_NOW();
+  //ticks_from_unit(500, TIME_UNIT_MS)
+  long long unsigned aux_target_time = 60000; //ticks_to_unit(ticks_from_unit(5, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
   
   adi_t adi = {
     .set_id = random_rand() % 16,
@@ -206,12 +211,12 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi,
     .pExtHeader = aux_adv_hdr,
     .advDataLen = 13,
-    .pAdvData = (uint8_t*) "Hello World!"
+    .pAdvData = hello_world
   };
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_target_time - 8000,
+    .startTime = aux_target_time - 1180,
     .startTrigger = { .triggerType = TRIG_REL_PREVSTART },
     .condition = { .rule = COND_NEVER },
     .channel = 20,
@@ -254,10 +259,10 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   };
 
   // Submit command
-  if(on() != BLE_RESULT_OK) {
-    LOG_DBG("could not enable rf core prior to ADV_EXT \n");
-    return BLE_RESULT_ERROR;
-  }
+  //if(on() != BLE_RESULT_OK) {
+  //  LOG_DBG("could not enable rf core prior to ADV_EXT \n");
+  //  return BLE_RESULT_ERROR;
+  //}
   long unsigned before_send_adv_ext = RTIMER_NOW();
   rf_ble_cmd_send((uint8_t*) &adv_ext_cmd);
   long unsigned after_send_adv_ext = RTIMER_NOW();
@@ -325,26 +330,18 @@ static void init_scanner(ble_scanner_t* scanner) {
     },
     .scanConfig = {
       .scanFilterPolicy = 0, /* TODO: set to 1 when whitelist is fixed */
-      .bStrictLenFilter = 1
+      .bStrictLenFilter = 0
     },
     .pDeviceAddress = (uint16_t*) scanner->ble_addr, // will be checked against incoming tgt addr
     .pWhiteList = scanner->whitelist,
-    .maxWaitTimeForAuxCh = UINT16_MAX,
-    .timeoutTrigger = {
-      .triggerType = TRIG_NEVER
-    },
-    .endTrigger = {
-      .triggerType = TRIG_NEVER
-    }
+    .maxWaitTimeForAuxCh = UINT16_MAX, // never follow aux pointer
+    .timeoutTrigger = { .triggerType = TRIG_NEVER },
+    .endTrigger = { .triggerType = TRIG_NEVER }
   };
   scanner->cmd = (rfc_CMD_BLE5_SCANNER_t) {
     .commandNo = CMD_BLE5_SCANNER,
-    .startTrigger = {
-      .triggerType = TRIG_NOW
-    },
-    .condition = {
-      .rule = COND_NEVER // never execute 'next op'
-    },
+    .startTrigger = { .triggerType = TRIG_NOW },
+    .condition = { .rule = COND_NEVER }, // never execute 'next op'
     .channel = 37,
     .pParams = &scanner->params,
     .pOutput = &scanner->output
@@ -577,8 +574,8 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
   if(enable && !g_scanner.scanning) {
     if(on() != BLE_RESULT_OK) {
-      LOG_ERR("could not enable rf core prior to scanning\n");
-      return BLE_RESULT_ERROR;
+     LOG_ERR("could not enable rf core prior to scanning\n");
+     return BLE_RESULT_ERROR;
     }
     rf_ble_cmd_send((uint8_t*)&g_scanner.cmd);
     g_scanner.scanning = true;
