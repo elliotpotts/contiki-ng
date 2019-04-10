@@ -148,81 +148,14 @@ static ble_result_t read_bd_addr(uint8_t *addr) {
   return BLE_RESULT_OK;
 }
 
-struct rtimer adv_timer;
-
-uint8_t adv_data[] = "Hello world!"; 
-
-void aux_adv(struct rtimer *t, void *userdata) {
-  uint8_t my_addr[BLE_ADDR_SIZE];
-  ble_addr_cpy_to(my_addr);
-
-  uint8_t set_id = (uint8_t) ((intptr_t) userdata);
-  LOG_DBG("Sending auxiliary for set %u\n", set_id);
-  
-  /* PACKET 2: AUX_ADV_IND */
-  uint8_t header[64];
-  uint8_t *header_out = header;
-
-  //flags
-  *header_out++ = ble5_adv_ext_hdr_flag_adi;
-
-  adi_t adi = {
-    .set_id = set_id,
-    .data_id = random_rand()
-  };
-  memcpy(header_out, &adi, sizeof(adi));
-  header_out += sizeof(adi);
-
-  int header_len = header_out - header;
-
-  rfc_ble5ExtAdvEntry_t adv_pkt = {
-    .extHdrInfo = {
-      .length = header_len,
-      .advMode = 0,
-    },
-    .extHdrFlags = ble5_adv_ext_hdr_flag_adi,
-    .advDataLen = 13,
-    .pExtHeader = header,
-    .pAdvData = adv_data
-  };
-
-  // Construct parameters and command
-  rfc_ble5AdvAuxPar_t params = {
-    .pAdvPkt = (uint8_t*) &adv_pkt
-  };
-  rfc_bleAdvOutput_t output = { 0 };
-  rfc_CMD_BLE5_ADV_AUX_t cmd = {
-    .commandNo = CMD_BLE5_ADV_AUX,
-    .startTrigger = {
-      .triggerType = TRIG_NOW,
-    },
-    .condition = {
-      .rule = COND_NEVER
-    },
-    .channel = 20,
-    .pParams = &params,
-    .pOutput = &output
-  };
-
-  // Submit command
-  if(on() != BLE_RESULT_OK) {
-    LOG_DBG("could not enable rf core prior to AUX_ADV \n");
-    return;
-  }
-  rf_ble_cmd_send((uint8_t*) &cmd);
-  rf_ble_cmd_wait((uint8_t*) &cmd);
-  LOG_DBG("Aux sent.\n");
-  set_scan_enable(1, 0);
-}
-
-void write_ext_adv(uint8_t *out,
-		   const uint8_t *flags,
-		   const uint8_t *adv_addr,
-		   const uint8_t *tgt_addr,
-		   const adi_t *adi,
-		   const aux_ptr_t *aux_ptr,
-		   const sync_info_t *sync_info,
-		   const uint8_t *tx_power) {
+void write_ext_adv_hdr(uint8_t *out,
+		       const uint8_t *flags,
+		       const uint8_t *adv_addr,
+		       const uint8_t *tgt_addr,
+		       const adi_t *adi,
+		       const aux_ptr_t *aux_ptr,
+		       const sync_info_t *sync_info,
+		       const uint8_t *tx_power) {
   if (flags) {
     *out++ = *flags;
   }
