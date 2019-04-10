@@ -200,7 +200,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 
   /* PACKET 2 */
   uint8_t aux_adv_hdr[64];
-  write_ext_adv(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
+  write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
   rfc_ble5ExtAdvEntry_t aux_adv_entry = {
     .extHdrInfo = { .length = 1 + 2 },
     .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi,
@@ -211,7 +211,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_target_time - 100,
+    .startTime = aux_target_time - 8000,
     .startTrigger = { .triggerType = TRIG_REL_PREVSTART },
     .condition = { .rule = COND_NEVER },
     .channel = 20,
@@ -232,7 +232,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   };
   
   uint8_t adv_ext_hdr[64];
-  write_ext_adv(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
+  write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
   rfc_ble5ExtAdvEntry_t adv_ext_entry = {
     .extHdrInfo = { .length = 1 + 6 + 2 + 3 },
     .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi | ble5_adv_ext_hdr_flag_aux_ptr,
@@ -258,11 +258,17 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     LOG_DBG("could not enable rf core prior to ADV_EXT \n");
     return BLE_RESULT_ERROR;
   }
+  long unsigned before_send_adv_ext = RTIMER_NOW();
   rf_ble_cmd_send((uint8_t*) &adv_ext_cmd);
+  long unsigned after_send_adv_ext = RTIMER_NOW();
   rf_ble_cmd_wait((uint8_t*) &adv_ext_cmd);
-  LOG_DBG("adv_ext finished\n");
+  long unsigned after_wait_adv_ext = RTIMER_NOW();
   rf_ble_cmd_wait((uint8_t*) &aux_adv_cmd);
-  LOG_DBG("aux_adv finished\n");
+  long unsigned after_wait_aux_adv = RTIMER_NOW();
+  LOG_DBG("started sending adv_ext at %lu\n", before_send_adv_ext);
+  LOG_DBG("finished sending & started waiting for adv_ext at %lu\n", after_send_adv_ext);
+  LOG_DBG("finished waiting for adv_ext & started waiting for aux_adv at %lu\n", after_wait_adv_ext);
+  LOG_DBG("finished waiting for aux_adv at %lu\n", after_wait_aux_adv);
 
   set_scan_enable(1,0);
   return BLE_RESULT_OK;
