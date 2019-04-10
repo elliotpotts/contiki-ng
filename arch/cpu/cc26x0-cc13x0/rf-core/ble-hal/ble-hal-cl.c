@@ -189,25 +189,47 @@ uint8_t hello_world[] = "Hello, World!";
 
 /* Advertising */
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
+  // We can't send and scan at the same time, so disable scanning
   set_scan_enable(0, 0);
 
+  /* In this function we create two commands like this:
+   *
+   * Timeline:
+   * _____________________________________________________
+   *   |                          |
+   *   ^                          |
+   *   "prev start"           "prev start" + 60'000 RAT ticks
+   *
+   *   +------------------+      +------------------------+
+   *   | CMD_BLE5_ADV_EXT |      | CMD_BLE5_ADV_AUX       |
+   *   | TRIGGER_NOW      |      | TRIGGER_REL_PREVSTART  |
+   *   |          next op +----->|                next op +------> NULL
+   *   +------------------+      | advData: "hello world" |
+   *                             +------------------------+
+
   /* Common */
-  rfc_bleAdvOutput_t output = { 0 };
-  
-  //rtimer_clock_t base = RTIMER_NOW();
-  //ticks_from_unit(500, TIME_UNIT_MS)
-  long long unsigned aux_target_time = 60000; //ticks_to_unit(ticks_from_unit(5, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
-  
+  rfc_bleAdvOutput_t output = { 0 }; // clear all counters
+
+  // aux_target_time is the number of RF Core ticks after which the Aux packet will be sent
+  // RF Core timer has 4MHz resolution
+  // 15ms in RF Core timer ticks (60'000 * 1/4'000'000 seconds = 15ms)
+  long long unsigned aux_target_time = 60000; 
+
+  // ADI is essentially two sequence numbers:
+  // set_id is to distinguish between two separate chains of advertising data
+  // set_id is 4 bits, so 16 possible values
+  // data_id is to distinguish between packets within the same chain
+  // data_id 12 bits, so 4096 possible values
   adi_t adi = {
     .set_id = random_rand() % 16,
-    .data_id = random_rand()
+    .data_id = random_rand() % 4096
   };
 
   /* PACKET 2 */
   uint8_t aux_adv_hdr[64];
   write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
   rfc_ble5ExtAdvEntry_t aux_adv_entry = {
-    .extHdrInfo = { .length = 1 + 2 },
+    .extHdrInfo = { .length = 1 + 2 }, // 1 = sizeof(flags), 2 = sizeof(adi)
     .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi,
     .pExtHeader = aux_adv_hdr,
     .advDataLen = 13,
@@ -216,7 +238,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_target_time - 1180,
+    .startTime = aux_target_time,
     .startTrigger = { .triggerType = TRIG_REL_PREVSTART },
     .condition = { .rule = COND_NEVER },
     .channel = 20,
@@ -239,7 +261,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   uint8_t adv_ext_hdr[64];
   write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
   rfc_ble5ExtAdvEntry_t adv_ext_entry = {
-    .extHdrInfo = { .length = 1 + 6 + 2 + 3 },
+    .extHdrInfo = { .length = 1 + 6 + 2 + 3 }, // 1 = sizeof(flags), 2 = sizeof(adv_addr), 2 = sizeof(adi), 3 = sizeof(aux_ptr)
     .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi | ble5_adv_ext_hdr_flag_aux_ptr,
     .pExtHeader = adv_ext_hdr,
   };
