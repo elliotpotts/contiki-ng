@@ -54,7 +54,7 @@ typedef struct {
   /* A number unique to an advertising packet within a set of chained advertisements */
   uint16_t data_id:12;
   /* A number unique to a chain of advertisements */
-  uint8_t set_id:4;
+  uint16_t set_id:4;
 } __attribute__ ((packed)) adi_t;
 
 /* Auxilliary Pointer

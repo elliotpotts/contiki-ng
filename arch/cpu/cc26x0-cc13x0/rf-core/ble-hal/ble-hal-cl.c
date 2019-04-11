@@ -148,6 +148,14 @@ static ble_result_t read_bd_addr(uint8_t *addr) {
   return BLE_RESULT_OK;
 }
 
+void rmemcpy(void *restrict dst, const void *restrict src, size_t count) {
+  unsigned char *dst_char = dst;
+  const unsigned char *src_char = src;
+  for (size_t i = 0; i < count; ++i) {
+    dst_char[count - 1 - i] = src_char[i];
+  }
+}
+
 void write_ext_adv_hdr(uint8_t *out,
 		       const uint8_t *flags,
 		       const uint8_t *adv_addr,
@@ -160,28 +168,27 @@ void write_ext_adv_hdr(uint8_t *out,
     *out++ = *flags;
   }
   if (adv_addr) {
-    for (int i = 0; i < BLE_ADDR_SIZE; i++) {
-      *out++ = adv_addr[BLE_ADDR_SIZE - i - 1];
-    }
+    rmemcpy(out, adv_addr, BLE_ADDR_SIZE);
+    out += BLE_ADDR_SIZE;
   }
   if (tgt_addr) {
-    memcpy(out, tgt_addr, BLE_ADDR_SIZE);
+    rmemcpy(out, tgt_addr, BLE_ADDR_SIZE);
     out += BLE_ADDR_SIZE;
   }
   if (adi) {
-    memcpy(out, adi, sizeof(*adi));
+    rmemcpy(out, adi, sizeof(*adi));
     out += sizeof(*adi);
   }
   if (aux_ptr) {
-    memcpy(out, aux_ptr, sizeof(*aux_ptr));
+    rmemcpy(out, aux_ptr, sizeof(*aux_ptr));
     out += sizeof(*aux_ptr);
   }
   if (sync_info) {
-    memcpy(out, sync_info, sizeof(*sync_info));
+    rmemcpy(out, sync_info, sizeof(*sync_info));
     out += sizeof(*sync_info);
   }
   if (tx_power) {
-    memcpy(out, tx_power, sizeof(*tx_power));
+    rmemcpy(out, tx_power, sizeof(*tx_power));
     out += sizeof(*tx_power);
   }
 }
@@ -226,6 +233,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .set_id = random_rand() % 16,
     .data_id = random_rand() % 4096
   };
+  LOG_DBG("Starting %u.%u\n", adi.set_id, adi.data_id);
 
   /* PACKET 2 */
   uint8_t aux_adv_hdr[64];
@@ -434,46 +442,46 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
     
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adv_a) {
       pdu.adv_a_present = true;
-      memcpy(pdu.adv_a, payload, BLE_ADDR_SIZE);
+      rmemcpy(&pdu.adv_a, payload, BLE_ADDR_SIZE);
+      payload += BLE_ADDR_SIZE;
       LOG_DBG("pdu.adv_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
 	      pdu.adv_a[0], pdu.adv_a[1], pdu.adv_a[2], pdu.adv_a[3], pdu.adv_a[4], pdu.adv_a[5]);
-      payload += BLE_ADDR_SIZE;
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
       pdu.tgt_a_present = true;
-      memcpy(pdu.tgt_a, payload, BLE_ADDR_SIZE);
-      LOG_DBG("pdu.tgt_a is present: ");
-      LOG_DBG("%.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]);
+      rmemcpy(&pdu.tgt_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
-      //TODO: make sure we're the target
+      LOG_DBG("pdu.tgt_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
+	      pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
       pdu.adi_present = true;
-      memcpy(&pdu.adi, payload, sizeof(pdu.adi));
-      LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id);
+      rmemcpy(&pdu.adi, payload, sizeof(pdu.adi));
       payload += sizeof(pdu.adi);
+      LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
       pdu.aux_ptr_present = true;
       memcpy(&pdu.aux_ptr, payload, sizeof(pdu.aux_ptr));
+      payload += sizeof(pdu.aux_ptr);
       LOG_DBG("pdu.aux_ptr is present: {\n\t.channel_ix = %u,\n\t.clock_accuracy = %u,\n\t.offset_units = %u,\n\t.aux_offset = %u,\n\t.aux_phy = %u,\n}\n",
 	      pdu.aux_ptr.channel_ix, pdu.aux_ptr.clock_accuracy, pdu.aux_ptr.offset_units, pdu.aux_ptr.aux_offset, pdu.aux_ptr.aux_phy);
-      payload += sizeof(pdu.aux_ptr);
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
       pdu.sync_info_present = true;
       memcpy(&pdu.sync_info, payload, sizeof(pdu.sync_info));
-      LOG_DBG("pdu.sync_info is present\n");
       payload += sizeof(pdu.sync_info);
+      LOG_DBG("pdu.sync_info is present\n");
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
       pdu.tx_power_present = true;
-      pdu.tx_power = *payload++;
+      rmemcpy(&pdu.tx_power, payload, sizeof(pdu.tx_power));
+      payload += sizeof(pdu.tx_power);
       LOG_DBG("pdu.tx_power is present\n");
     }
   }
@@ -585,7 +593,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
   }
 
   if (scanner->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
-    LOG_ERR("Scan rx buffer is out of space!\n");
+    LOG_ERR("Scan rx buffer is out of space! TODO: restart scanner here\n");
     g_scanner.scanning = false;
   } else {
     rtimer_set(&scanner->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, scanner);
