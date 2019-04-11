@@ -160,8 +160,9 @@ void write_ext_adv_hdr(uint8_t *out,
     *out++ = *flags;
   }
   if (adv_addr) {
-    memcpy(out, adv_addr, BLE_ADDR_SIZE);
-    out += BLE_ADDR_SIZE;
+    for (int i = 0; i < BLE_ADDR_SIZE; i++) {
+      *out++ = adv_addr[BLE_ADDR_SIZE - i - 1];
+    }
   }
   if (tgt_addr) {
     memcpy(out, tgt_addr, BLE_ADDR_SIZE);
@@ -206,6 +207,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
    *   |          next op +----->|                next op +------> NULL
    *   +------------------+      | advData: "hello world" |
    *                             +------------------------+
+   */
 
   /* Common */
   rfc_bleAdvOutput_t output = { 0 }; // clear all counters
@@ -252,10 +254,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   
   aux_ptr_t aux_ptr = {
     .channel_ix = aux_adv_cmd.channel,
-    .clock_accuracy = 0,
     /*.offset_units = <filled by radio cpu> */
     /*.aux_offset = <filled by radio cpu> */
-    .aux_phy = 0
   };
   
   uint8_t adv_ext_hdr[64];
@@ -351,7 +351,7 @@ static void init_scanner(ble_scanner_t* scanner) {
       //.bAppendRssi = 1 TODO: elliot: maybe use rssi for TSCH-over-BLE5
     },
     .scanConfig = {
-      .scanFilterPolicy = 0, /* TODO: set to 1 when whitelist is fixed */
+      .scanFilterPolicy = 1,
       .bStrictLenFilter = 0
     },
     .pDeviceAddress = (uint16_t*) scanner->ble_addr, // will be checked against incoming tgt addr
@@ -369,7 +369,6 @@ static void init_scanner(ble_scanner_t* scanner) {
     .pOutput = &scanner->output
   };
 }
-
 
 static adv_link_t* scanner_make_link(ble_scanner_t* scanner) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {

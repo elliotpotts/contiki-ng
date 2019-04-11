@@ -25,25 +25,52 @@ enum {
   ble_adv_pdu_hdr_rxadd = 0b10000000
 };
 
-
+/* Accuracy of a clock */
 typedef enum {
-  ble5_clock_accuracy_30us = 0,
-  ble5_clock_accuracy_300us = 1
+  /* between 51 ppm and 500 ppm */
+  ble5_clock_accuracy_low = 0,
+  /* between 0 ppm and 50 ppm */
+  ble5_clock_accuracy_high = 1
 } ble5_clock_accuracy_t;
 
-// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.4
+/* Unit in time of a quantity */
+typedef enum {
+  /* aux_offset in seconds = aux_offset * 30,000 */
+  ble5_offset_units_30us = 0,
+  /* aux_offset in seconds = aux_offset * 3,000 */
+  ble5_offset_units_300us = 1
+} ble5_offset_units_t;
+
+typedef enum {
+  ble5_phy_le1m,
+  ble5_phy_le2m,
+  ble5_phy_coded
+} ble5_phy_t;
+
+/* Advertising Data Info
+ * Sequence numbers used to distinguish advertising packets from one another
+ * see Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.4 */
 typedef struct {
+  /* A number unique to an advertising packet within a set of chained advertisements */
   uint16_t data_id:12;
+  /* A number unique to a chain of advertisements */
   uint8_t set_id:4;
 } __attribute__ ((packed)) adi_t;
 
-// Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.5
+/* Auxilliary Pointer
+ * Describes how to scan for the next packet which will arrive in the chain
+ * see Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.5 */
 typedef struct {
+  /* Channel on which the packet will arrive */
   uint8_t channel_ix:6;
+  /* Accuracy of the advertiser's clock */
   ble5_clock_accuracy_t clock_accuracy:1;
-  uint8_t offset_units:1;
+  /* Units aux_offset are specified in */
+  ble5_offset_units_t offset_units:1;
+  /* Time from start of packet containing the aux. ptr. to the approximate start of the auxilliary packet */
   uint16_t aux_offset:13;
-  uint8_t aux_phy:3;
+  /* PHY used to transmit the auxilliary packet */
+  ble5_phy_t aux_phy:3;
 } __attribute__ ((packed)) aux_ptr_t;
 
 // Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.6
