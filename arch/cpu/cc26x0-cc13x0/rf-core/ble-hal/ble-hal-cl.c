@@ -176,19 +176,19 @@ void write_ext_adv_hdr(uint8_t *out,
     out += BLE_ADDR_SIZE;
   }
   if (adi) {
-    rmemcpy(out, adi, sizeof(*adi));
+    memcpy(out, adi, sizeof(*adi));
     out += sizeof(*adi);
   }
   if (aux_ptr) {
-    rmemcpy(out, aux_ptr, sizeof(*aux_ptr));
+    memcpy(out, aux_ptr, sizeof(*aux_ptr));
     out += sizeof(*aux_ptr);
   }
   if (sync_info) {
-    rmemcpy(out, sync_info, sizeof(*sync_info));
+    memcpy(out, sync_info, sizeof(*sync_info));
     out += sizeof(*sync_info);
   }
   if (tx_power) {
-    rmemcpy(out, tx_power, sizeof(*tx_power));
+    memcpy(out, tx_power, sizeof(*tx_power));
     out += sizeof(*tx_power);
   }
 }
@@ -240,7 +240,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
   rfc_ble5ExtAdvEntry_t aux_adv_entry = {
     .extHdrInfo = { .length = 1 + 2 }, // 1 = sizeof(flags), 2 = sizeof(adi)
-    .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi,
+    .extHdrFlags = ble5_adv_ext_hdr_flag_adi,
     .pExtHeader = aux_adv_hdr,
     .advDataLen = 13,
     .pAdvData = hello_world
@@ -248,7 +248,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_target_time,
+    .startTime = aux_target_time - 1180,
     .startTrigger = { .triggerType = TRIG_REL_PREVSTART },
     .condition = { .rule = COND_NEVER },
     .channel = 20,
@@ -259,13 +259,12 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   /* PACKET 1 */
   uint8_t adv_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(adv_addr);
-  
+
   aux_ptr_t aux_ptr = {
     .channel_ix = aux_adv_cmd.channel,
     /*.offset_units = <filled by radio cpu> */
     /*.aux_offset = <filled by radio cpu> */
   };
-  
   uint8_t adv_ext_hdr[64];
   write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
   rfc_ble5ExtAdvEntry_t adv_ext_entry = {
@@ -458,7 +457,7 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
       pdu.adi_present = true;
-      rmemcpy(&pdu.adi, payload, sizeof(pdu.adi));
+      memcpy(&pdu.adi, payload, sizeof(pdu.adi));
       payload += sizeof(pdu.adi);
       LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id);
     }
@@ -480,7 +479,7 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
       pdu.tx_power_present = true;
-      rmemcpy(&pdu.tx_power, payload, sizeof(pdu.tx_power));
+      memcpy(&pdu.tx_power, payload, sizeof(pdu.tx_power));
       payload += sizeof(pdu.tx_power);
       LOG_DBG("pdu.tx_power is present\n");
     }
