@@ -2,12 +2,6 @@
 #define BLE5_H_
 
 typedef enum {
-  ble_adv_ext_ind,
-  ble_aux_adv_ind,
-  ble_aux_chain_ind
-} ble_adv_pdu_type_t;
-
-typedef enum {
   ble5_adv_ext_hdr_flag_adv_a = 1 << 0,
   ble5_adv_ext_hdr_flag_tgt_a = 1 << 1,
   ble5_adv_ext_hdr_flag_adi = 1 << 3,
@@ -87,7 +81,6 @@ typedef struct {
 } __attribute__ ((packed)) sync_info_t;
 
 typedef struct {
-  ble_adv_pdu_type_t type;
   uint8_t adv_mode;
   bool adv_a_present;
   uint8_t adv_a[BLE_ADDR_SIZE];

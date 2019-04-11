@@ -52,6 +52,7 @@ typedef struct {
 typedef struct adv_link_t adv_link_t;
 struct adv_link_t {
   bool populated;
+  bool is_head;
   ext_adv_pdu pdu;
   adv_link_t* next_in_chain;
 };
@@ -368,7 +369,6 @@ static void init_scanner(ble_scanner_t* scanner) {
   scanner->rx_queue.pCurrEntry = (uint8_t*) &scanner->rx_buffers[0].entry;
   scanner->rx_queue.pLastEntry = NULL;
   scanner->rx_queue_current = &scanner->rx_buffers[0];
-  /*  TODO: figure out why this whitelist lets nothing through */
   scanner->whitelist[0] = (rfc_bleWhiteListEntry_t) {
     .size = 5,
     .conf = { .bEnable = 1 },
@@ -425,60 +425,62 @@ static void init_scanner(ble_scanner_t* scanner) {
   };
 }
 
-static adv_link_t* scanner_make_link(ble_scanner_t* scanner) {
+/* Allocate a link which may be */
+static adv_link_t* scanner_chain_start(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    if (!scanner->adv_links[i].populated) {
-      scanner->adv_links[i].populated = true;
-      memset(&scanner->adv_links[i].pdu, 0, sizeof(scanner->adv_links[i].pdu));
-      scanner->adv_links[i].next_in_chain = NULL;
-      return &scanner->adv_links[i];
+    adv_link_t* link = &scanner->adv_links[i];
+    if (!link->populated) {
+      link->populated = true;
+      memcpy(&link->pdu, pdu, sizeof(*pdu));
+      link->next_in_chain = NULL;
+      return link;
     }
   }
   return NULL;
 }
 
-static void free_adv_link(adv_link_t* link) {
-  link->populated = false;
-}
-
-static void adv_chain_append(adv_link_t* chain, adv_link_t* x) {
-  while (chain->next_in_chain) {
-    chain = chain->next_in_chain;
-  }
-  chain->next_in_chain = x;
-}
-
-static adv_link_t* scanner_get_chain_head(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
+static adv_link_t* scanner_chain_get_head(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    if (scanner->adv_links[i].populated &&
-	scanner->adv_links[i].pdu.adi.set_id == pdu->adi.set_id &&
-	scanner->adv_links[i].pdu.type == ble_adv_ext_ind) {
-      return &scanner->adv_links[i];
+    adv_link_t* link = &scanner->adv_links[i];
+    if (link->populated && link->is_head && link->pdu.adi.set_id == pdu->adi.set_id) {
+      return link;
     }
   }
   return NULL;
 }
 
-static void scanner_free_chain(ble_scanner_t* scanner, adv_link_t* link) {
-  for (adv_link_t* l = scanner_get_chain_head(scanner, &link->pdu); l->next_in_chain; l = l->next_in_chain) {
-    free_adv_link(l);
+static adv_link_t* scanner_chain_append(ble_scanner_t* scanner, adv_link_t* head, const ext_adv_pdu* pdu) {
+  adv_link_t* last = head;
+  while (last->next_in_chain != NULL) {
+    // Don't append a duplicated
+    if (last->pdu.adi.set_id == pdu->adi.set_id &&
+	last->pdu.adi.data_id == pdu->adi.data_id) {
+      LOG_DBG("We've seen %u.%u before; dropping", pdu->adi.set_id, pdu->adi.data_id);
+      return NULL;
+    }
+    last = last->next_in_chain;
   }
-}
-
-static bool scanner_remembers(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
+  // find free slot to put link
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
-    adv_link_t* l = &scanner->adv_links[i];
-    if (l->populated && l->pdu.adi_present &&
-	l->pdu.adi.set_id == pdu->adi.set_id &&
-	l->pdu.adi.data_id == pdu->adi.data_id) {
-      return true;
+    adv_link_t* link = &scanner->adv_links[i];
+    if (!link->populated) {
+      link->populated = true;
+      link->is_head = false;
+      memcpy(&link->pdu, pdu, sizeof(*pdu));
+      last->next_in_chain = link;
+      return link;
     }
   }
-  return false;
+  return NULL;
+};
+
+static adv_link_t* scanner_chain_finish(ble_scanner_t* scanner, adv_link_t* head, const ext_adv_pdu* last_pdu) {
+  LOG_DBG("TODO: finish stuff\n");
+  return NULL;
 }
 
-static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type, uint8_t *payload, uint8_t *payload_end) { 
-  ext_adv_pdu pdu = { .type = type };
+static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8_t *payload_end) { 
+  ext_adv_pdu pdu = { 0 };
 
   pdu.adv_mode = *payload & 0b11000000;
   const uint8_t ext_header_len = *payload++ & 0b00111111;
@@ -535,81 +537,61 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, ble_adv_pdu_type_t type
 
   uint8_t *acad_end = ext_header_end;
   uint8_t *acad_begin = payload;
+  memcpy(&pdu.acad, acad_begin, acad_end - acad_begin);
 
   uint8_t *adv_data_end = payload_end;
   uint8_t *adv_data_begin = ext_header_end;
+  memcpy(&pdu.adv_data, adv_data_begin, adv_data_end - adv_data_begin);
 
-  // have we already stored this pdu?
-  if (scanner_remembers(scanner, &pdu)) {
-    LOG_DBG("already seen; dropping\n");
-    return; // yes, we don't need to see it gain.
-  };
-  // is there an adi with which to associate a chain?
-  if (!pdu.adi_present) {
-    // no indication of which chain it belongs to, drop it
-    LOG_DBG("no adi with which to continue chain; dropping\n");
+  /* Is there an adi with which to associate/start a chain?
+   * All extended advertisements carrying Adv Data must have an ADI.
+   */
+  if (adv_data_begin == adv_data_end && !pdu.adi_present) {
+    LOG_DBG("packet without adi or adv data is not meaningful\n");
     return;
-  }
-  // is there an adv a?
-  if (!pdu.adv_a_present) {
-    LOG_DBG("no advertising address present; dropping\n");
-    return; // we only care about packets we know the sender of
-  }
-  
-  // are we starting a new chain or continuing a previous one?
-  if (pdu.type == 7) {
-    // starting a new chain
-    if (!pdu.aux_ptr_present) {
-      LOG_DBG("can't start a new chain without an aux ptr; dropping\n");
-      return; // either no aux ptr therefore no data or no adi therefore no means of identification
-    }
-    if (adv_data_begin != adv_data_end) {
-      LOG_DBG("advData not allowed on ADV_EXT; dropping\n");
-      return;
-    }
-    // don't drop - start tracking this chain
-    LOG_DBG("tracking new chain %u\n", pdu.adi.set_id);
+  } else  if (!pdu.adi_present) {
+    LOG_DBG("TODO: handle non-chained data; dropping\n");
+    return;
+  } else if (adv_data_begin == adv_data_end) {
+    LOG_DBG("no adv_data; chain will be started on first aux packet\n");
     return;
   } else {
-    // continuing or finishing an existing chain
-    adv_link_t* head = scanner_get_chain_head(scanner, &pdu);
-    if (head == NULL) {
-      // we didn't see the start of the chain, drop it
-      LOG_DBG("missed chain head; dropping\n");
-      return;
-    }
-    // if we're starting to send just adv data, make sure there is an adv a somewhere in the chain
-    uint8_t* adv_a = NULL;
-    if (pdu.type == ble_aux_chain_ind) {
-      for (adv_link_t* x = head; x != NULL; x = x->next_in_chain) {
-	if (x->pdu.adv_a_present) {
-	  adv_a = x->pdu.adv_a;
+    // Are we tracking this chain yet?
+    adv_link_t* chain_head = scanner_chain_get_head(scanner, &pdu);
+    if (chain_head) {
+      // Yes, so continue or finish it
+      if (pdu.aux_ptr_present) {
+	// Continue chain 
+	if (scanner_chain_append(scanner, chain_head, &pdu)) {
+	  LOG_DBG("Appending did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
+	} else {
+	  LOG_DBG("Could not append did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
 	}
-      }
-      if (!adv_a) {
-	// they haven't sent an adv a yet and they've missed their chance
-	LOG_DBG("chain never sent adv a; dropping\n");
-	scanner_free_chain(scanner, head);
+	return;
+      } else {
+	// Finishing
+	if (scanner_chain_finish(scanner, chain_head, &pdu)) {
+	  LOG_DBG("Finished chain with sid %u\n", pdu.adi.set_id);
+	} else {
+	  LOG_ERR("Couldn't finish chain with sid %u\n", pdu.adi.set_id);
+	}
 	return;
       }
-    }
-    // are we finishing or continuing?
-    if (pdu.aux_ptr_present) {
-      // continuing, so keep adv_data
-      pdu.acad_len = acad_end - acad_begin;
-      memcpy(&pdu.acad, acad_begin, pdu.acad_len);
-      pdu.adv_data_len = adv_data_end - adv_data_begin;
-      memcpy(&pdu.adv_data, adv_data_begin, pdu.adv_data_len);
-      // point last link to our new link
-      //adv_chain_append(head, new_link);
-      LOG_DBG("continuing chain %u\n", pdu.adi.set_id);
-      return;
     } else {
-      // finishing
-      // find the sender address
-      LOG_DBG("finishing chain %u\n", pdu.adi.set_id);
-      scanner_free_chain(scanner, head);
-      return;
+      // No, will there be further aux packets?
+      if (pdu.aux_ptr_present) {
+	// yes, start a new chain
+	if (scanner_chain_start(scanner, &pdu)) {
+	  LOG_DBG("Started chain tracking sid %u\n", pdu.adi.set_id);
+	} else {
+	  LOG_ERR("Couldn't start new chain!\n");
+	}
+	return;
+      } else {
+	// no, instead of starting then finishing, just report packet directly
+	LOG_DBG("TODO: send single adv_data to upper layer\n");
+	return;
+      }
     }
   }
   LOG_DBG("unaccounted for!\n");
@@ -631,7 +613,7 @@ static void scan_rx(struct rtimer *t, void *userdata) {
     /* case ble_aux_adv_ind: */
     /* case ble_aux_chain_ind: */
     case 7:
-      scanner_recv_ext_adv(scanner, pdu_type, payload, payload_end);
+      scanner_recv_ext_adv(scanner, payload, payload_end);
     default: break;
     }
     /* free current entry */
