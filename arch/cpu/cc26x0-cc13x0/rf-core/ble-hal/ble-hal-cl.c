@@ -249,57 +249,70 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 
   unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
   unsigned long adv_ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
-  unsigned long adv_aux_start = adv_ext_start + 60000;
+  unsigned long adv_aux0_start = adv_ext_start + 60000;
+  unsigned long adv_aux1_start = adv_aux0_start + 60000;
 
-  /* In this function we create two commands. An ADV_EXT_IND
-   * followed by an ADV_AUX_IND.
-   *
-   * Timeline:
-   * _____________________________________________________
-   * |< 50ms >|<        15 ms          >|
-   * base     |adv_ext_start            |adv_aux_start
-   *          |                         |
-   *         +------------------+      +------------------------+
-   *         | CMD_BLE5_ADV_EXT |      | CMD_BLE5_ADV_AUX       |
-   *         | TRIGGER_ABS      |      | TRIGGER_REL_ABS        |
-   *         |          next op +----->|                next op +------> NULL
-   *         +------------------+      | advData: "hello world" |
-   *                                   +------------------------+
-   */
-
-  /* Common */
   rfc_bleAdvOutput_t output = { 0 }; // clear all counters
 
-  // ADI is essentially two sequence numbers:
-  // set_id is to distinguish between two separate chains of advertising data
-  // set_id is 4 bits, so 16 possible values
-  // data_id is to distinguish between packets within the same chain
-  // data_id 12 bits, so 4096 possible values
-  adi_t adi = {
-    .set_id = random_rand() % 16,
+  unsigned common_set_id = random_rand() % 16;
+
+  /* PACKET 3 */
+  adi_t aux_adv1_adi = {
+    .set_id = common_set_id,
     .data_id = random_rand() % 4096
   };
-  LOG_DBG("Starting %u.%u\n", adi.set_id, adi.data_id);
-
-  /* PACKET 2 */
-  uint8_t aux_adv_hdr[64];
-  write_ext_adv_hdr_result_t aux_adv_hdr_result = write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
-  LOG_DBG("aux_adv_hdr_result.length -> %u\n", aux_adv_hdr_result.length);
-  rfc_ble5ExtAdvEntry_t aux_adv_entry = {
-    .extHdrInfo = { .length = aux_adv_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
-    .extHdrFlags = aux_adv_hdr_result.flags,
-    .pExtHeader = aux_adv_hdr,
+  uint8_t aux_adv1_hdr[64];
+  write_ext_adv_hdr_result_t aux_adv1_hdr_result = write_ext_adv_hdr(aux_adv1_hdr, NULL, NULL, NULL, &aux_adv1_adi, NULL, NULL, NULL);
+  rfc_ble5ExtAdvEntry_t aux_adv1_entry = {
+    .extHdrInfo = { .length = aux_adv1_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
+    .extHdrFlags = aux_adv1_hdr_result.flags,
+    .pExtHeader = aux_adv1_hdr,
     .advDataLen = hello_world_len,
     .pAdvData = hello_world
   };
-  rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
-  rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
+  rfc_ble5AdvAuxPar_t aux_adv1_params = { .pAdvPkt = (uint8_t*) &aux_adv1_entry };
+  rfc_CMD_BLE5_ADV_AUX_t aux_adv1_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = adv_aux_start - 800,
+    .startTime = adv_aux1_start - 800,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
     .condition = { .rule = COND_NEVER },
+    .channel = 12,
+    .pParams = &aux_adv1_params,
+    .pOutput = &output
+  };
+
+  /* PACKET 2 */
+  adi_t aux_adv0_adi = {
+    .set_id = common_set_id,
+    .data_id = random_rand() % 4096
+  };
+  aux_ptr_t aux_adv1_aux_ptr = {
+    .channel_ix = aux_adv1_cmd.channel,
+    /*.offset_units = <filled by radio cpu> */
+    /*.aux_offset = <filled by radio cpu> */
+  };
+  uint8_t aux_adv0_hdr[64];
+  write_ext_adv_hdr_result_t aux_adv0_hdr_result = write_ext_adv_hdr(aux_adv0_hdr, NULL, NULL, NULL, &aux_adv0_adi, &aux_adv1_aux_ptr, NULL, NULL);
+  rfc_ble5ExtAdvEntry_t aux_adv0_entry = {
+    .extHdrInfo = { .length = aux_adv0_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
+    .extHdrFlags = aux_adv0_hdr_result.flags,
+    .pExtHeader = aux_adv0_hdr,
+    .advDataLen = hello_world_len,
+    .pAdvData = hello_world
+  };
+  rfc_ble5AdvAuxPar_t aux_adv0_params = {
+    .pAdvPkt = (uint8_t*) &aux_adv0_entry,
+    .auxPtrTargetType = TRIG_ABSTIME,
+    .auxPtrTargetTime = adv_aux1_start
+  };
+  rfc_CMD_BLE5_ADV_AUX_t aux_adv0_cmd = {
+    .commandNo = CMD_BLE5_ADV_AUX,
+    .startTime = adv_aux0_start - 800,
+    .startTrigger = { .triggerType = TRIG_ABSTIME },
+    .pNextOp = (rfc_radioOp_t*) &aux_adv1_cmd,
+    .condition = { .rule = COND_ALWAYS },
     .channel = 20,
-    .pParams = &aux_adv_params,
+    .pParams = &aux_adv0_params,
     .pOutput = &output
   };
   
@@ -307,14 +320,17 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   // device address stored most-significant-octet first
   uint8_t adv_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(adv_addr);
-
-  aux_ptr_t aux_ptr = {
-    .channel_ix = aux_adv_cmd.channel,
+  adi_t adv_ext_adi = {
+    .set_id = common_set_id,
+    .data_id = random_rand() % 4096
+  };
+  aux_ptr_t adv_ext_aux_ptr = {
+    .channel_ix = aux_adv0_cmd.channel,
     /*.offset_units = <filled by radio cpu> */
     /*.aux_offset = <filled by radio cpu> */
   };
   uint8_t adv_ext_hdr[64];
-  write_ext_adv_hdr_result_t adv_ext_hdr_result = write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
+  write_ext_adv_hdr_result_t adv_ext_hdr_result = write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adv_ext_adi, &adv_ext_aux_ptr, NULL, NULL);
   rfc_ble5ExtAdvEntry_t adv_ext_entry = {
     .extHdrInfo = { .length = adv_ext_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
     .extHdrFlags = adv_ext_hdr_result.flags,
@@ -323,13 +339,13 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvExtPar_t adv_ext_params = {
     .pAdvPkt = (uint8_t*) &adv_ext_entry,
     .auxPtrTargetType = TRIG_ABSTIME,
-    .auxPtrTargetTime = adv_aux_start
+    .auxPtrTargetTime = adv_aux0_start
   };
   rfc_CMD_BLE5_ADV_EXT_t adv_ext_cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
     .startTime = adv_ext_start,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
-    .pNextOp = (rfc_radioOp_t*) &aux_adv_cmd,
+    .pNextOp = (rfc_radioOp_t*) &aux_adv0_cmd,
     .condition = { .rule = COND_ALWAYS },
     .channel = 37,
     .pParams = &adv_ext_params,
@@ -346,12 +362,15 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   long unsigned after_send_adv_ext = RTIMER_NOW();
   rf_ble_cmd_wait((uint8_t*) &adv_ext_cmd);
   long unsigned after_wait_adv_ext = RTIMER_NOW();
-  rf_ble_cmd_wait((uint8_t*) &aux_adv_cmd);
-  long unsigned after_wait_aux_adv = RTIMER_NOW();
+  rf_ble_cmd_wait((uint8_t*) &aux_adv0_cmd);
+  long unsigned after_wait_aux_adv0 = RTIMER_NOW();
+    rf_ble_cmd_wait((uint8_t*) &aux_adv1_cmd);
+  long unsigned after_wait_aux_adv1 = RTIMER_NOW();
   LOG_DBG("started sending adv_ext at %lu\n", before_send_adv_ext);
   LOG_DBG("finished sending & started waiting for adv_ext at %lu\n", after_send_adv_ext);
   LOG_DBG("finished waiting for adv_ext & started waiting for aux_adv at %lu\n", after_wait_adv_ext);
-  LOG_DBG("finished waiting for aux_adv at %lu\n", after_wait_aux_adv);
+  LOG_DBG("finished waiting for aux_adv0 at %lu\n", after_wait_aux_adv0);
+  LOG_DBG("finished waiting for aux_adv0 at %lu\n", after_wait_aux_adv1);
 
   set_scan_enable(1,0);
   return BLE_RESULT_OK;
@@ -425,12 +444,13 @@ static void init_scanner(ble_scanner_t* scanner) {
   };
 }
 
-/* Allocate a link which may be */
+/* Start a new chain with the given pdu as it's first link */
 static adv_link_t* scanner_chain_start(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
     adv_link_t* link = &scanner->adv_links[i];
     if (!link->populated) {
       link->populated = true;
+      link->is_head = true;
       memcpy(&link->pdu, pdu, sizeof(*pdu));
       link->next_in_chain = NULL;
       return link;
@@ -439,6 +459,7 @@ static adv_link_t* scanner_chain_start(ble_scanner_t* scanner, const ext_adv_pdu
   return NULL;
 }
 
+/* Find the first link the given pdu belongs to, or NULL if none exists */
 static adv_link_t* scanner_chain_get_head(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
     adv_link_t* link = &scanner->adv_links[i];
@@ -449,6 +470,7 @@ static adv_link_t* scanner_chain_get_head(ble_scanner_t* scanner, const ext_adv_
   return NULL;
 }
 
+/* Append the given pdu to the end of the chain containing the given link */
 static adv_link_t* scanner_chain_append(ble_scanner_t* scanner, adv_link_t* head, const ext_adv_pdu* pdu) {
   adv_link_t* last = head;
   while (last->next_in_chain != NULL) {
@@ -475,7 +497,12 @@ static adv_link_t* scanner_chain_append(ble_scanner_t* scanner, adv_link_t* head
 };
 
 static adv_link_t* scanner_chain_finish(ble_scanner_t* scanner, adv_link_t* head, const ext_adv_pdu* last_pdu) {
-  LOG_DBG("TODO: finish stuff\n");
+  LOG_DBG("FINISHING WITH DATA:\n");
+  while (head != NULL) {
+    LOG_DBG("    %s\n", head->pdu.adv_data);
+    head = head->next_in_chain;
+  }
+  LOG_DBG("    %s\n", last_pdu->adv_data);
   return NULL;
 }
 
@@ -537,11 +564,14 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
 
   uint8_t *acad_end = ext_header_end;
   uint8_t *acad_begin = payload;
-  memcpy(&pdu.acad, acad_begin, acad_end - acad_begin);
+  pdu.acad_len = acad_end - acad_begin;
+  memcpy(&pdu.acad, acad_begin, pdu.acad_len);
 
   uint8_t *adv_data_end = payload_end;
   uint8_t *adv_data_begin = ext_header_end;
-  memcpy(&pdu.adv_data, adv_data_begin, adv_data_end - adv_data_begin);
+  pdu.adv_data_len = adv_data_end - adv_data_begin;
+  memcpy(&pdu.adv_data, adv_data_begin, pdu.adv_data_len);
+  pdu.adv_data[pdu.adv_data_len] = '\0';
 
   /* Is there an adi with which to associate/start a chain?
    * All extended advertisements carrying Adv Data must have an ADI.
@@ -582,7 +612,7 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
       if (pdu.aux_ptr_present) {
 	// yes, start a new chain
 	if (scanner_chain_start(scanner, &pdu)) {
-	  LOG_DBG("Started chain tracking sid %u\n", pdu.adi.set_id);
+	  LOG_DBG("Started chain sid %u\n", pdu.adi.set_id);
 	} else {
 	  LOG_ERR("Couldn't start new chain!\n");
 	}

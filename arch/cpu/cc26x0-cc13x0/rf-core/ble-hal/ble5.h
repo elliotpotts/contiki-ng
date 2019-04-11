@@ -97,7 +97,7 @@ typedef struct {
   uint8_t acad_len;
   uint8_t acad[63];
   uint8_t adv_data_len;
-  uint8_t adv_data[255];
+  uint8_t adv_data[256];
 } ext_adv_pdu;
 
 #endif /* BLE5_H_ */
