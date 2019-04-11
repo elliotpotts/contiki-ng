@@ -46,7 +46,7 @@ typedef enum {
   ble5_phy_le2m,
   ble5_phy_coded
 } ble5_phy_t;
-
+ 
 /* Advertising Data Info
  * Sequence numbers used to distinguish advertising packets from one another
  * see Bluetooth 5.0 Core Spec Vol. 6, Pt. B, 2.3.4.4 */

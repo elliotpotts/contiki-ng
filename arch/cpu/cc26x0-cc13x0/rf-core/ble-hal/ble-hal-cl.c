@@ -156,49 +156,97 @@ void rmemcpy(void *restrict dst, const void *restrict src, size_t count) {
   }
 }
 
-void write_ext_adv_hdr(uint8_t *out,
-		       const uint8_t *flags,
-		       const uint8_t *adv_addr,
-		       const uint8_t *tgt_addr,
-		       const adi_t *adi,
-		       const aux_ptr_t *aux_ptr,
-		       const sync_info_t *sync_info,
-		       const uint8_t *tx_power) {
+typedef struct {
+  unsigned length;
+  unsigned flags;
+} write_ext_adv_hdr_result_t;
+
+/**
+ * Write given fields to a given output pointer according to the common extended advertising format
+ *
+ *     flags - pointer to byte representing flags.
+ *             NULL for no flag
+ *  adv_addr - pointer to uint8_t[6] representing this devices address with most-significant-octet first
+ *             NULL for no advertising address
+ *  tgt_addr - pointer to uint8_t[6] representing the target devices address with most-significant-octet first
+ *             NULL for no advertising address
+ *       adi - pointer to an adi_t describing the AdvDataInfo
+ *             NULL for no adi
+ *   aux_ptr - pointer to an aux_ptr_t describing how the auxilliary packet can be received
+ *             NULL for no auxilliary packet pointer
+ * sync_info - pointer to a sync_info_t describing how to time synchronise to periodic advertisements
+ *             NULL for no sync info
+ *  tx_power - pointer to a byte stating the transmission power
+ *             NULL for no tx power
+ * 
+ * Returns flags representing which fields were non-null, and the total length of non-null fields
+ **/
+write_ext_adv_hdr_result_t
+write_ext_adv_hdr(uint8_t *out,
+		  const uint8_t *flags,
+		  const uint8_t *adv_addr,
+		  const uint8_t *tgt_addr,
+		  const adi_t *adi,
+		  const aux_ptr_t *aux_ptr,
+		  const sync_info_t *sync_info,
+		  const uint8_t *tx_power) {
+  unsigned flags_out = 0;
+  unsigned length_out = 0;
   if (flags) {
     *out++ = *flags;
+    length_out += 1;
   }
   if (adv_addr) {
+    flags_out |= ble5_adv_ext_hdr_flag_adv_a;
     rmemcpy(out, adv_addr, BLE_ADDR_SIZE);
     out += BLE_ADDR_SIZE;
+    length_out += BLE_ADDR_SIZE;
   }
   if (tgt_addr) {
+    flags_out |= ble5_adv_ext_hdr_flag_tgt_a;
     rmemcpy(out, tgt_addr, BLE_ADDR_SIZE);
     out += BLE_ADDR_SIZE;
+    length_out += BLE_ADDR_SIZE;
   }
   if (adi) {
+    flags_out |= ble5_adv_ext_hdr_flag_adi;
     memcpy(out, adi, sizeof(*adi));
     out += sizeof(*adi);
+    length_out += sizeof(*adi);
   }
   if (aux_ptr) {
+    flags_out |= ble5_adv_ext_hdr_flag_aux_ptr;
     memcpy(out, aux_ptr, sizeof(*aux_ptr));
     out += sizeof(*aux_ptr);
+    length_out += sizeof(*aux_ptr);
   }
   if (sync_info) {
+    flags_out |= ble5_adv_ext_hdr_flag_sync_info;
     memcpy(out, sync_info, sizeof(*sync_info));
     out += sizeof(*sync_info);
+    length_out += sizeof(*sync_info);
   }
   if (tx_power) {
+    flags_out |= ble5_adv_ext_hdr_flag_tx_power;
     memcpy(out, tx_power, sizeof(*tx_power));
     out += sizeof(*tx_power);
+    length_out += sizeof(*tx_power);
   }
+  return (write_ext_adv_hdr_result_t) {
+    .length = length_out,
+    .flags = flags_out
+  };
 }
 
-uint8_t hello_world[] = "Hello, World!";
+enum { hello_world_len = 13 };
+uint8_t hello_world[hello_world_len] = "Hello, World!";
 
 /* Advertising */
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
   // We can't send and scan at the same time, so disable scanning
   set_scan_enable(0, 0);
+
+  unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
 
   /* In this function we create two commands like this:
    *
@@ -237,12 +285,13 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 
   /* PACKET 2 */
   uint8_t aux_adv_hdr[64];
-  write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
+  write_ext_adv_hdr_result_t aux_adv_hdr_result = write_ext_adv_hdr(aux_adv_hdr, NULL, NULL, NULL, &adi, NULL, NULL, NULL);
+  LOG_DBG("aux_adv_hdr_result.length -> %u\n", aux_adv_hdr_result.length);
   rfc_ble5ExtAdvEntry_t aux_adv_entry = {
-    .extHdrInfo = { .length = 1 + 2 }, // 1 = sizeof(flags), 2 = sizeof(adi)
-    .extHdrFlags = ble5_adv_ext_hdr_flag_adi,
+    .extHdrInfo = { .length = aux_adv_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
+    .extHdrFlags = aux_adv_hdr_result.flags,
     .pExtHeader = aux_adv_hdr,
-    .advDataLen = 13,
+    .advDataLen = hello_world_len,
     .pAdvData = hello_world
   };
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
@@ -257,6 +306,7 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   };
   
   /* PACKET 1 */
+  // device address stored most-significant-octet first
   uint8_t adv_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(adv_addr);
 
@@ -266,10 +316,10 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     /*.aux_offset = <filled by radio cpu> */
   };
   uint8_t adv_ext_hdr[64];
-  write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
+  write_ext_adv_hdr_result_t adv_ext_hdr_result = write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adi, &aux_ptr, NULL, NULL);
   rfc_ble5ExtAdvEntry_t adv_ext_entry = {
-    .extHdrInfo = { .length = 1 + 6 + 2 + 3 }, // 1 = sizeof(flags), 2 = sizeof(adv_addr), 2 = sizeof(adi), 3 = sizeof(aux_ptr)
-    .extHdrFlags = ble5_adv_ext_hdr_flag_adv_a | ble5_adv_ext_hdr_flag_adi | ble5_adv_ext_hdr_flag_aux_ptr,
+    .extHdrInfo = { .length = adv_ext_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
+    .extHdrFlags = adv_ext_hdr_result.flags,
     .pExtHeader = adv_ext_hdr,
   };
   rfc_ble5AdvExtPar_t adv_ext_params = {
