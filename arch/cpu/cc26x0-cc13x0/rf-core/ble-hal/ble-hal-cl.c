@@ -247,30 +247,27 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   set_scan_enable(0, 0);
 
   unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
+  unsigned long adv_ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
+  unsigned long adv_aux_start = adv_ext_start + 60000;
 
-  /* In this function we create two commands like this:
+  /* In this function we create two commands. An ADV_EXT_IND
+   * followed by an ADV_AUX_IND.
    *
    * Timeline:
    * _____________________________________________________
-   *   |                          |
-   *   ^                          |
-   *   "prev start"           "prev start" + 60'000 RAT ticks
-   *
-   *   +------------------+      +------------------------+
-   *   | CMD_BLE5_ADV_EXT |      | CMD_BLE5_ADV_AUX       |
-   *   | TRIGGER_NOW      |      | TRIGGER_REL_PREVSTART  |
-   *   |          next op +----->|                next op +------> NULL
-   *   +------------------+      | advData: "hello world" |
-   *                             +------------------------+
+   * |< 50ms >|<        15 ms          >|
+   * base     |adv_ext_start            |adv_aux_start
+   *          |                         |
+   *         +------------------+      +------------------------+
+   *         | CMD_BLE5_ADV_EXT |      | CMD_BLE5_ADV_AUX       |
+   *         | TRIGGER_ABS      |      | TRIGGER_REL_ABS        |
+   *         |          next op +----->|                next op +------> NULL
+   *         +------------------+      | advData: "hello world" |
+   *                                   +------------------------+
    */
 
   /* Common */
   rfc_bleAdvOutput_t output = { 0 }; // clear all counters
-
-  // aux_target_time is the number of RF Core ticks after which the Aux packet will be sent
-  // RF Core timer has 4MHz resolution
-  // 15ms in RF Core timer ticks (60'000 * 1/4'000'000 seconds = 15ms)
-  long long unsigned aux_target_time = 60000; 
 
   // ADI is essentially two sequence numbers:
   // set_id is to distinguish between two separate chains of advertising data
@@ -297,8 +294,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvAuxPar_t aux_adv_params = { .pAdvPkt = (uint8_t*) &aux_adv_entry };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_target_time - 1180,
-    .startTrigger = { .triggerType = TRIG_REL_PREVSTART },
+    .startTime = adv_aux_start - 800,
+    .startTrigger = { .triggerType = TRIG_ABSTIME },
     .condition = { .rule = COND_NEVER },
     .channel = 20,
     .pParams = &aux_adv_params,
@@ -324,12 +321,13 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   };
   rfc_ble5AdvExtPar_t adv_ext_params = {
     .pAdvPkt = (uint8_t*) &adv_ext_entry,
-    .auxPtrTargetType = TRIG_REL_START,
-    .auxPtrTargetTime = aux_target_time
+    .auxPtrTargetType = TRIG_ABSTIME,
+    .auxPtrTargetTime = adv_aux_start
   };
   rfc_CMD_BLE5_ADV_EXT_t adv_ext_cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
-    .startTrigger = { .triggerType = TRIG_NOW },
+    .startTime = adv_ext_start,
+    .startTrigger = { .triggerType = TRIG_ABSTIME },
     .pNextOp = (rfc_radioOp_t*) &aux_adv_cmd,
     .condition = { .rule = COND_ALWAYS },
     .channel = 37,
