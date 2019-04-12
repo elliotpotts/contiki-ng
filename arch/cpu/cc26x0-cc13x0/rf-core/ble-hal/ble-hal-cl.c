@@ -252,8 +252,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
 
   unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
   unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
-  unsigned long aux_tgt = ext_start + 5000;
-  unsigned long aux_start = aux_tgt - 680;
+  unsigned long aux_tgt = ext_start + 60000;
+  unsigned long aux_start = aux_tgt - 800;
 
   rfc_bleAdvOutput_t output = { 0 }; // clear all counters
 
@@ -270,8 +270,8 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .extHdrInfo = { .length = aux_adv0_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
     .extHdrFlags = aux_adv0_hdr_result.flags,
     .pExtHeader = aux_adv0_hdr,
-    .advDataLen = 0,
-    .pAdvData = NULL
+    .advDataLen = 251,
+    .pAdvData = lorem_ipsum
   };
   rfc_ble5AdvAuxPar_t aux_adv0_params = {
     .pAdvPkt = (uint8_t*) &aux_adv0_entry
@@ -315,31 +315,41 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .commandNo = CMD_BLE5_ADV_EXT,
     .startTime = ext_start,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
-    .pNextOp = (rfc_radioOp_t*) &aux_adv0_cmd,
-    .condition = { .rule = COND_ALWAYS },
+    .condition = { .rule = COND_NEVER },
     .channel = 37,
     .pParams = &adv_ext_params,
     .pOutput = &output
   };
 
   rf_ble_cmd_send((uint8_t*) &adv_ext_cmd);
+  rf_ble_cmd_wait((uint8_t*) &adv_ext_cmd);
+  rf_ble_cmd_send((uint8_t*) &aux_adv0_cmd);
+  rf_ble_cmd_wait((uint8_t*) &aux_adv0_cmd);
 
-  long unsigned ext_sent = RTIMER_NOW();
-  long unsigned ext_started;
-  long unsigned aux_started;
+  /* long unsigned ext_sent = RTIMER_NOW(); */
+  /* long unsigned ext_started; */
+  /* long unsigned aux_started; */
+  /* long unsigned aux_finished; */
 
-  while (ext_started = RTIMER_NOW(), adv_ext_cmd.status != 2) {
-  }
-  while (aux_started = RTIMER_NOW(), aux_adv0_cmd.status != 2) {
-  }
+  /* LOG_DBG("Waiting for ext to start\n"); */
+  /* while (ext_started = RTIMER_NOW(), adv_ext_cmd.status != 2) { */
+  /* } */
+  /* LOG_DBG("Waiting for aux to start\n"); */
+  /* while (aux_started = RTIMER_NOW(), aux_adv0_cmd.status != 2) { */
+  /* } */
+  /* LOG_DBG("Waiting for aux to finish\n"); */
+  /* while (aux_finished = RTIMER_NOW(), aux_adv0_cmd.status != 0x1400) { */
+  /*   LOG_DBG("status: 0x%x\n", aux_adv0_cmd.status); */
+  /* } */
 
-  LOG_DBG("       base -> %lu\n", base);
-  LOG_DBG("  ext_start -> %lu\n", ext_start);
-  LOG_DBG("    aux_tgt -> %lu\n", aux_tgt);
-  LOG_DBG("  aux_start -> %lu\n", aux_start);
-  LOG_DBG("   ext_sent -> %lu\n", ext_sent);
-  LOG_DBG("ext_started -> %lu\n", ext_started);
-  LOG_DBG("aux_started -> %lu\n", aux_started);
+  /* LOG_DBG("        base -> %lu\n", base); */
+  /* LOG_DBG("   ext_start -> %lu\n", ext_start); */
+  /* LOG_DBG("     aux_tgt -> %lu\n", aux_tgt); */
+  /* LOG_DBG("   aux_start -> %lu\n", aux_start); */
+  /* LOG_DBG("    ext_sent -> %lu\n", ext_sent); */
+  /* LOG_DBG(" ext_started -> %lu\n", ext_started); */
+  /* LOG_DBG(" aux_started -> %lu\n", aux_started); */
+  /* LOG_DBG("aux_finished -> %lu\n", aux_finished); */
 
   set_scan_enable(1,0);
   return BLE_RESULT_OK;
@@ -588,7 +598,7 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
 	return;
       } else {
 	// no, instead of starting then finishing, just report packet directly
-	LOG_DBG("TODO: send single adv_data to upper layer\n");
+	LOG_DBG("TODO: send single adv_data to upper layer\n%s\n", pdu.adv_data);
 	return;
       }
     }
@@ -598,7 +608,6 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
 
 static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scanner_t *scanner = (ble_scanner_t *)userdata;
-  LOG_DBG("scanner->cmd.status => 0x%x\n", scanner->cmd.status);
   
   while (scanner->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
     uint8_t *rx_data = scanner->rx_queue_current->data;

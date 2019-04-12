@@ -1,6 +1,10 @@
 #ifndef BLE5_H_
 #define BLE5_H_
 
+enum { BLE5_ADV_PDU_PAYLOAD_MAX_SIZE = 255 };
+enum { BLE5_ADV_DATA_MAX_TOTAL_SIZE = 1650 };
+enum { BLE5_ADV_DATA_MAX_SIZE = 254 };
+
 typedef enum {
   ble5_adv_ext_hdr_flag_adv_a = 1 << 0,
   ble5_adv_ext_hdr_flag_tgt_a = 1 << 1,
@@ -9,8 +13,6 @@ typedef enum {
   ble5_adv_ext_hdr_flag_sync_info = 1 << 5,
   ble5_adv_ext_hdr_flag_tx_power = 1 << 6,
 } ble5_adv_ext_hdr_flag_t;
-
-enum { BLE5_ADV_PDU_PAYLOAD_MAX_SIZE = 255 };
 
 enum {
   ble_adv_pdu_hdr_type =  0b00001111,

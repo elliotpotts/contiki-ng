@@ -242,6 +242,11 @@ enum {
   RADIO_PARAM_BLE_CONN_UPDATE
 };
 
+//typedef {
+//  unsigned bytes_sent;
+//  rtimer_clock_t call_next;
+//} struct ble5_adv_ext_result_t;
+
 /*---------------------------------------------------------------------------*/
 /**
  * The structure of a ble radio controller driver in Contiki.
@@ -273,6 +278,8 @@ struct ble_hal_driver {
 
   /*------------------------------------------------------------------------*/
   /* ADVERTISING COMMANDS                                                   */
+  //ble5_adv_result_t (*adv_ext) (const uint8_t *tgt_ble_addr, const uint8_t *data_begin, const uint8_t *data_end);
+  //ble5_adv_result_t (*adv_ext) (const uint8_t *data_begin, const uint8_t *data_end);
   ble_result_t (*adv_ext) (const uint8_t *tgt_ble_addr, const uint8_t *data, unsigned len);
   
   /**
