@@ -1,7 +1,12 @@
 #ifndef BLE5_H_
 #define BLE5_H_
 
+#include <stdint.h>
+#include <stdbool.h>
+
+enum { BLE_ADDR_SIZE = 6 };
 enum { BLE5_ADV_PDU_PAYLOAD_MAX_SIZE = 255 };
+enum { BLE5_EXT_HDR_MAX_SIZE = 63 };
 enum { BLE5_ADV_DATA_MAX_TOTAL_SIZE = 1650 };
 enum { BLE5_ADV_DATA_MAX_SIZE = 254 };
 
@@ -81,6 +86,41 @@ typedef struct {
   uint8_t crc_init:3;
   uint8_t event_cnt:2;
 } __attribute__ ((packed)) sync_info_t;
+
+typedef struct {
+  unsigned length;
+  unsigned flags;
+} write_ext_adv_hdr_result_t;
+
+/**
+ * Write given fields to a given output pointer according to the common extended advertising format
+ *
+ *     flags - pointer to byte representing flags.
+ *             NULL for no flag
+ *  adv_addr - pointer to uint8_t[6] representing this devices address with most-significant-octet first
+ *             NULL for no advertising address
+ *  tgt_addr - pointer to uint8_t[6] representing the target devices address with most-significant-octet first
+ *             NULL for no advertising address
+ *       adi - pointer to an adi_t describing the AdvDataInfo
+ *             NULL for no adi
+ *   aux_ptr - pointer to an aux_ptr_t describing how the auxilliary packet can be received
+ *             NULL for no auxilliary packet pointer
+ * sync_info - pointer to a sync_info_t describing how to time synchronise to periodic advertisements
+ *             NULL for no sync info
+ *  tx_power - pointer to a byte stating the transmission power
+ *             NULL for no tx power
+ * 
+ * Returns flags representing which fields were non-null, and the total length of non-null fields
+ **/
+write_ext_adv_hdr_result_t
+write_ext_adv_hdr(uint8_t *out,
+		  const uint8_t *flags,
+		  const uint8_t *adv_addr,
+		  const uint8_t *tgt_addr,
+		  const adi_t *adi,
+		  const aux_ptr_t *aux_ptr,
+		  const sync_info_t *sync_info,
+		  const uint8_t *tx_power);
 
 typedef struct {
   uint8_t adv_mode;

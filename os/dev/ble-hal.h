@@ -41,6 +41,7 @@
 #define BLE_HAL_H_
 
 #include <stddef.h>
+#include "ble5.h"
 
 /*---------------------------------------------------------------------------*/
 /* BLE device address size */
@@ -242,10 +243,10 @@ enum {
   RADIO_PARAM_BLE_CONN_UPDATE
 };
 
-//typedef {
-//  unsigned bytes_sent;
-//  rtimer_clock_t call_next;
-//} struct ble5_adv_ext_result_t;
+typedef struct {
+  unsigned bytes_sent;
+  void* radio_data;
+} ble5_ext_adv_result_t;
 
 /*---------------------------------------------------------------------------*/
 /**
@@ -278,9 +279,8 @@ struct ble_hal_driver {
 
   /*------------------------------------------------------------------------*/
   /* ADVERTISING COMMANDS                                                   */
-  //ble5_adv_result_t (*adv_ext) (const uint8_t *tgt_ble_addr, const uint8_t *data_begin, const uint8_t *data_end);
-  //ble5_adv_result_t (*adv_ext) (const uint8_t *data_begin, const uint8_t *data_end);
-  ble_result_t (*adv_ext) (const uint8_t *tgt_ble_addr, const uint8_t *data, unsigned len);
+  ble5_ext_adv_result_t (*adv_ext) (const uint8_t *tgt_addr, const adi_t *adi, const aux_ptr_t *aux_ptr, const uint8_t *data_begin, const uint8_t *data_end);
+  ble5_ext_adv_result_t (*aux_adv) (ble5_ext_adv_result_t *prev_result, const adi_t *adi, const aux_ptr_t *aux_ptr, const uint8_t *data_begin, const uint8_t *data_end);
   
   /**
    * Sets the parameter for advertising.

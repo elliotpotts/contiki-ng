@@ -26,7 +26,7 @@
 #include "rf-core/ble-hal/rf-ble-cmd.h"
 #include "rf_patches/rf_patch_cpe_bt5.h"
 
-#include "ble5.h"
+#include "os/dev/ble5.h"
 
 #define LOG_MODULE "BLE-HAL"
 #define LOG_LEVEL LOG_LEVEL_RADIO
@@ -149,7 +149,7 @@ static ble_result_t read_bd_addr(uint8_t *addr) {
   return BLE_RESULT_OK;
 }
 
-void rmemcpy(void *restrict dst, const void *restrict src, size_t count) {
+static void rmemcpy(void *restrict dst, const void *restrict src, size_t count) {
   unsigned char *dst_char = dst;
   const unsigned char *src_char = src;
   for (size_t i = 0; i < count; ++i) {
@@ -157,202 +157,168 @@ void rmemcpy(void *restrict dst, const void *restrict src, size_t count) {
   }
 }
 
-typedef struct {
-  unsigned length;
-  unsigned flags;
-} write_ext_adv_hdr_result_t;
-
-/**
- * Write given fields to a given output pointer according to the common extended advertising format
- *
- *     flags - pointer to byte representing flags.
- *             NULL for no flag
- *  adv_addr - pointer to uint8_t[6] representing this devices address with most-significant-octet first
- *             NULL for no advertising address
- *  tgt_addr - pointer to uint8_t[6] representing the target devices address with most-significant-octet first
- *             NULL for no advertising address
- *       adi - pointer to an adi_t describing the AdvDataInfo
- *             NULL for no adi
- *   aux_ptr - pointer to an aux_ptr_t describing how the auxilliary packet can be received
- *             NULL for no auxilliary packet pointer
- * sync_info - pointer to a sync_info_t describing how to time synchronise to periodic advertisements
- *             NULL for no sync info
- *  tx_power - pointer to a byte stating the transmission power
- *             NULL for no tx power
- * 
- * Returns flags representing which fields were non-null, and the total length of non-null fields
- **/
-write_ext_adv_hdr_result_t
-write_ext_adv_hdr(uint8_t *out,
-		  const uint8_t *flags,
-		  const uint8_t *adv_addr,
-		  const uint8_t *tgt_addr,
-		  const adi_t *adi,
-		  const aux_ptr_t *aux_ptr,
-		  const sync_info_t *sync_info,
-		  const uint8_t *tx_power) {
-  unsigned flags_out = 0;
-  unsigned length_out = 0;
-  if (flags) {
-    *out++ = *flags;
-    length_out += 1;
+unsigned min(unsigned lhs, unsigned rhs) {
+  if (lhs < rhs) {
+    return lhs;
+  } else {
+    return rhs;
   }
-  if (adv_addr) {
-    flags_out |= ble5_adv_ext_hdr_flag_adv_a;
-    rmemcpy(out, adv_addr, BLE_ADDR_SIZE);
-    out += BLE_ADDR_SIZE;
-    length_out += BLE_ADDR_SIZE;
-  }
-  if (tgt_addr) {
-    flags_out |= ble5_adv_ext_hdr_flag_tgt_a;
-    rmemcpy(out, tgt_addr, BLE_ADDR_SIZE);
-    out += BLE_ADDR_SIZE;
-    length_out += BLE_ADDR_SIZE;
-  }
-  if (adi) {
-    flags_out |= ble5_adv_ext_hdr_flag_adi;
-    memcpy(out, adi, sizeof(*adi));
-    out += sizeof(*adi);
-    length_out += sizeof(*adi);
-  }
-  if (aux_ptr) {
-    flags_out |= ble5_adv_ext_hdr_flag_aux_ptr;
-    memcpy(out, aux_ptr, sizeof(*aux_ptr));
-    out += sizeof(*aux_ptr);
-    length_out += sizeof(*aux_ptr);
-  }
-  if (sync_info) {
-    flags_out |= ble5_adv_ext_hdr_flag_sync_info;
-    memcpy(out, sync_info, sizeof(*sync_info));
-    out += sizeof(*sync_info);
-    length_out += sizeof(*sync_info);
-  }
-  if (tx_power) {
-    flags_out |= ble5_adv_ext_hdr_flag_tx_power;
-    memcpy(out, tx_power, sizeof(*tx_power));
-    out += sizeof(*tx_power);
-    length_out += sizeof(*tx_power);
-  }
-  return (write_ext_adv_hdr_result_t) {
-    .length = length_out,
-    .flags = flags_out
-  };
 }
 
-enum { hello_world_len = 13 };
-uint8_t hello_world[hello_world_len] = "Hello, World!";
+enum { AUX_TGT_DELAY_TICKS = 60000 };
+enum { ADV_PREPROCESSING_TICKS = 800 };
 
-enum { lorem_ipsum_len = 255 };
-uint8_t lorem_ipsum[lorem_ipsum_len] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. In sem ipsum, dapibus commodo risus eget, porta egestas nunc. Nam ultricies enim non quam accumsan vestibulum. Mauris venenatis consectetur diam, nec eleifend odio blandit ac. Duis ac interdum amet.";
+/* unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE); */
+/* unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE); */
+/* unsigned long aux_tgt = ext_start + 60000; */
+/* unsigned long aux_start = aux_tgt - 800; */
 
-/* Advertising */
-ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
-  // We can't send and scan at the same time, so disable scanning
-  set_scan_enable(0, 0);
+typedef struct {
+  aux_ptr_t last_aux_ptr;
+  long unsigned last_start_time;
+} advertiser_t;
+static advertiser_t g_advertiser;
 
-  unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
-  unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
-  unsigned long aux_tgt = ext_start + 60000;
-  unsigned long aux_start = aux_tgt - 800;
+ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
+			      const adi_t *adi,
+			      const aux_ptr_t *aux_ptr,
+			      const uint8_t *data_begin,
+			      const uint8_t *data_end) {   
+  rfc_bleAdvOutput_t output = { 0 };
 
-  rfc_bleAdvOutput_t output = { 0 }; // clear all counters
-
-  unsigned common_set_id = random_rand() % 16;
-
-  /* PACKET 2 */
-  adi_t aux_adv0_adi = {
-    .set_id = common_set_id,
-    .data_id = random_rand() % 4096
-  };
-  uint8_t aux_adv0_hdr[64];
-  write_ext_adv_hdr_result_t aux_adv0_hdr_result = write_ext_adv_hdr(aux_adv0_hdr, NULL, NULL, NULL, &aux_adv0_adi, NULL, NULL, NULL);
-  rfc_ble5ExtAdvEntry_t aux_adv0_entry = {
-    .extHdrInfo = { .length = aux_adv0_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
-    .extHdrFlags = aux_adv0_hdr_result.flags,
-    .pExtHeader = aux_adv0_hdr,
-    .advDataLen = 251,
-    .pAdvData = lorem_ipsum
-  };
-  rfc_ble5AdvAuxPar_t aux_adv0_params = {
-    .pAdvPkt = (uint8_t*) &aux_adv0_entry
-  };
-  rfc_CMD_BLE5_ADV_AUX_t aux_adv0_cmd = {
-    .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = aux_start,
-    .startTrigger = { .triggerType = TRIG_ABSTIME },
-    .condition = { .rule = COND_NEVER },
-    .channel = 20,
-    .pParams = &aux_adv0_params,
-    .pOutput = &output
-  };
-  
-  /* PACKET 1 */
-  // device address stored most-significant-octet first
   uint8_t adv_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(adv_addr);
-  adi_t adv_ext_adi = {
-    .set_id = common_set_id,
-    .data_id = random_rand() % 4096
+
+  uint8_t hdr[BLE5_EXT_HDR_MAX_SIZE];
+  if (data_end - data_begin <= sizeof(*aux_ptr)) {
+    aux_ptr = NULL;
+  }
+  write_ext_adv_hdr_result_t hdr_result = write_ext_adv_hdr(hdr, NULL, adv_addr, tgt_addr, adi, aux_ptr, NULL, NULL);
+  unsigned hdr_tot_len = hdr_result.length + 1; // + 1 because radio cpu adds flags for us
+  unsigned max_adv_data_len = BLE5_ADV_DATA_MAX_SIZE - hdr_tot_len;
+  unsigned adv_data_len = min(max_adv_data_len, data_end - data_begin);
+  
+  unsigned long start_time = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE) + AUX_TGT_DELAY_TICKS;
+    
+  rfc_ble5ExtAdvEntry_t entry = {
+    .extHdrInfo = { .length = hdr_tot_len },
+    .extHdrFlags = hdr_result.flags,
+    .pExtHeader = hdr,
+    .advDataLen = adv_data_len,
+    .pAdvData = (uint8_t*) data_begin
   };
-  aux_ptr_t adv_ext_aux_ptr = {
-    .channel_ix = aux_adv0_cmd.channel,
-    /*.offset_units = <filled by radio cpu> */
-    /*.aux_offset = <filled by radio cpu> */
-  };
-  uint8_t adv_ext_hdr[64];
-  write_ext_adv_hdr_result_t adv_ext_hdr_result = write_ext_adv_hdr(adv_ext_hdr, NULL, adv_addr, NULL, &adv_ext_adi, &adv_ext_aux_ptr, NULL, NULL);
-  rfc_ble5ExtAdvEntry_t adv_ext_entry = {
-    .extHdrInfo = { .length = adv_ext_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
-    .extHdrFlags = adv_ext_hdr_result.flags,
-    .pExtHeader = adv_ext_hdr,
-  };
-  rfc_ble5AdvExtPar_t adv_ext_params = {
-    .pAdvPkt = (uint8_t*) &adv_ext_entry,
+  rfc_ble5AdvExtPar_t params = {
+    .pAdvPkt = (uint8_t*) &entry,
     .auxPtrTargetType = TRIG_ABSTIME,
-    .auxPtrTargetTime = aux_tgt
+    .auxPtrTargetTime = start_time + AUX_TGT_DELAY_TICKS
   };
-  rfc_CMD_BLE5_ADV_EXT_t adv_ext_cmd = {
+  rfc_CMD_BLE5_ADV_EXT_t cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
-    .startTime = ext_start,
+    .startTime = start_time - ADV_PREPROCESSING_TICKS,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
     .condition = { .rule = COND_NEVER },
     .channel = 37,
-    .pParams = &adv_ext_params,
+    .pParams = &params,
     .pOutput = &output
   };
+  rf_ble_cmd_send((uint8_t*) &cmd);
+  LOG_DBG("    ext_start: %lu\n", start_time);
+  g_advertiser.last_start_time = start_time;
+  memcpy(&g_advertiser.last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
+  rf_ble_cmd_wait((uint8_t*) &cmd);
+    
+  return (ble5_ext_adv_result_t) {
+    .bytes_sent = adv_data_len,
+    .radio_data = &g_advertiser
+  };
+}
 
-  rf_ble_cmd_send((uint8_t*) &adv_ext_cmd);
-  rf_ble_cmd_wait((uint8_t*) &adv_ext_cmd);
-  rf_ble_cmd_send((uint8_t*) &aux_adv0_cmd);
-  rf_ble_cmd_wait((uint8_t*) &aux_adv0_cmd);
+ble5_ext_adv_result_t aux_adv(ble5_ext_adv_result_t *prev_result,
+			      const adi_t *adi,
+			      const aux_ptr_t *aux_ptr,
+			      const uint8_t *data_begin,
+			      const uint8_t *data_end) {
+  advertiser_t* advertiser = prev_result->radio_data;
+  rfc_bleAdvOutput_t output = { 0 };
 
-  /* long unsigned ext_sent = RTIMER_NOW(); */
-  /* long unsigned ext_started; */
-  /* long unsigned aux_started; */
-  /* long unsigned aux_finished; */
+  uint8_t hdr[BLE5_EXT_HDR_MAX_SIZE];
+  if (data_end - data_begin <= BLE5_ADV_DATA_MAX_SIZE - sizeof(*aux_ptr)) {
+    LOG_DBG("Last packet!\n");
+    aux_ptr = NULL;
+  }
+  write_ext_adv_hdr_result_t hdr_result = write_ext_adv_hdr(hdr, NULL, NULL, NULL, adi, aux_ptr, NULL, NULL);
+  unsigned hdr_tot_len = hdr_result.length + 1; // + 1 because radio cpu adds flags for us
+  unsigned max_adv_data_len = BLE5_ADV_DATA_MAX_SIZE - hdr_tot_len;
+  unsigned adv_data_len = min(max_adv_data_len, data_end - data_begin);
 
-  /* LOG_DBG("Waiting for ext to start\n"); */
-  /* while (ext_started = RTIMER_NOW(), adv_ext_cmd.status != 2) { */
-  /* } */
-  /* LOG_DBG("Waiting for aux to start\n"); */
-  /* while (aux_started = RTIMER_NOW(), aux_adv0_cmd.status != 2) { */
-  /* } */
-  /* LOG_DBG("Waiting for aux to finish\n"); */
-  /* while (aux_finished = RTIMER_NOW(), aux_adv0_cmd.status != 0x1400) { */
-  /*   LOG_DBG("status: 0x%x\n", aux_adv0_cmd.status); */
-  /* } */
+  unsigned long start_time = advertiser->last_start_time + AUX_TGT_DELAY_TICKS;
+  
+  rfc_ble5ExtAdvEntry_t entry = {
+    .extHdrInfo = { .length = hdr_tot_len },
+    .extHdrFlags = hdr_result.flags,
+    .pExtHeader = hdr,
+    .advDataLen = adv_data_len,
+    .pAdvData = (uint8_t*) data_begin
+  };
+  rfc_ble5AdvAuxPar_t params = {
+    .pAdvPkt = (uint8_t*) &entry,
+    .auxPtrTargetType = TRIG_ABSTIME,
+    .auxPtrTargetTime = start_time + AUX_TGT_DELAY_TICKS
+  };
+  rfc_CMD_BLE5_ADV_AUX_t cmd = {
+    .commandNo = CMD_BLE5_ADV_AUX,
+    .startTime = start_time - ADV_PREPROCESSING_TICKS,
+    .startTrigger = { .triggerType = TRIG_ABSTIME },
+    .condition = { .rule = COND_NEVER },
+    .channel = advertiser->last_aux_ptr.channel_ix,
+    .pParams = &params,
+    .pOutput = &output
+  };
+  rf_ble_cmd_send((uint8_t*) &cmd);
+  LOG_DBG("    aux_start: %lu\n", start_time);
+  advertiser->last_start_time = start_time;
+  memcpy(&advertiser->last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
+  
+  rf_ble_cmd_wait((uint8_t*) &cmd);
 
-  /* LOG_DBG("        base -> %lu\n", base); */
-  /* LOG_DBG("   ext_start -> %lu\n", ext_start); */
-  /* LOG_DBG("     aux_tgt -> %lu\n", aux_tgt); */
-  /* LOG_DBG("   aux_start -> %lu\n", aux_start); */
-  /* LOG_DBG("    ext_sent -> %lu\n", ext_sent); */
-  /* LOG_DBG(" ext_started -> %lu\n", ext_started); */
-  /* LOG_DBG(" aux_started -> %lu\n", aux_started); */
-  /* LOG_DBG("aux_finished -> %lu\n", aux_finished); */
+  return (ble5_ext_adv_result_t) {
+    .bytes_sent = adv_data_len,
+    .radio_data = &g_advertiser
+  };
+}
 
-  set_scan_enable(1,0);
-  return BLE_RESULT_OK;
+enum { lorem_ipsum_len = 600 };
+uint8_t lorem_ipsum[lorem_ipsum_len] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi id mollis felis, at tristique lectus. Nulla facilisi. Ut fermentum odio a sapien vehicula, nec tristique leo luctus. Pellentesque iaculis viverra sem a facilisis. Fusce at dolor nulla. Donec sagittis, lorem a condimentum auctor, nunc lectus tempor nunc, in commodo ligula orci in neque. Donec vel egestas odio, vitae tincidunt felis. Suspendisse non turpis nisl. In nec magna id est auctor suscipit a et metus. Aliquam porta ut ex non consequat. Pellentesque vel lacinia libero. Duis nec ex nisl. Etiam pretium odio dolor, vel cras amet.";
+
+static unsigned random_set_id() {
+  return random_rand() % 12;
+}
+
+static unsigned random_data_id() {
+  return random_rand() % 4096;
+}
+
+void test_ble5_adv() {
+  uint8_t* data = lorem_ipsum;
+  uint8_t* data_end = lorem_ipsum + lorem_ipsum_len;
+  adi_t adi = (adi_t) {
+    .set_id = random_set_id(),
+    .data_id = random_data_id()
+  };
+  aux_ptr_t aux_ptr = (aux_ptr_t) {
+    .channel_ix = 20,
+    .clock_accuracy = 0,
+    .offset_units = 0,
+    .aux_offset = 36,
+    .aux_phy = 0
+  };
+  ble5_ext_adv_result_t result = adv_ext(NULL, &adi, &aux_ptr, data, data_end);
+  data += result.bytes_sent;
+  while (data < data_end) {
+    adi.data_id = random_data_id();
+    result = aux_adv(&result, &adi, &aux_ptr, data, data_end);
+    data += result.bytes_sent;
+  }
 }
 
 /* Scanning */
@@ -559,10 +525,10 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
     LOG_DBG("packet without adi or adv data is not meaningful\n");
     return;
   } else  if (!pdu.adi_present) {
-    LOG_DBG("TODO: handle non-chained data; dropping\n");
+    LOG_DBG("RECV ACTION: TODO: handle non-chained data; dropping\n");
     return;
   } else if (adv_data_begin == adv_data_end) {
-    LOG_DBG("no adv_data; chain will be started on first aux packet\n");
+    LOG_DBG("RECV ACTION (or lack thereof): no adv_data; chain will be started on first aux packet\n");
     return;
   } else {
     // Are we tracking this chain yet?
@@ -572,15 +538,15 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
       if (pdu.aux_ptr_present) {
 	// Continue chain 
 	if (scanner_chain_append(scanner, chain_head, &pdu)) {
-	  LOG_DBG("Appending did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
+	  LOG_DBG("RECV ACTION: Appending did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
 	} else {
-	  LOG_DBG("Could not append did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
+	  LOG_ERR("Could not append did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id);
 	}
 	return;
       } else {
 	// Finishing
 	if (scanner_chain_finish(scanner, chain_head, &pdu)) {
-	  LOG_DBG("Finished chain with sid %u\n", pdu.adi.set_id);
+	  LOG_DBG("RECV ACTION: Finished chain with sid %u\n", pdu.adi.set_id);
 	} else {
 	  LOG_ERR("Couldn't finish chain with sid %u\n", pdu.adi.set_id);
 	}
@@ -591,14 +557,14 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
       if (pdu.aux_ptr_present) {
 	// yes, start a new chain
 	if (scanner_chain_start(scanner, &pdu)) {
-	  LOG_DBG("Started chain sid %u\n", pdu.adi.set_id);
+	  LOG_DBG("RECV ACTION: Started chain sid %u\n", pdu.adi.set_id);
 	} else {
 	  LOG_ERR("Couldn't start new chain!\n");
 	}
 	return;
       } else {
 	// no, instead of starting then finishing, just report packet directly
-	LOG_DBG("TODO: send single adv_data to upper layer\n%s\n", pdu.adv_data);
+	LOG_DBG("RECV_ACTION: TODO: send single adv_data to upper layer\n%s\n", pdu.adv_data);
 	return;
       }
     }
@@ -667,6 +633,7 @@ const struct ble_hal_driver ble_hal =
   read_bd_addr,
   NULL, //read_buffer_size,
   adv_ext,
+  aux_adv,
   NULL, //set_adv_param,
   NULL, //read_adv_channel_tx_power,
   NULL, //set_adv_data,
