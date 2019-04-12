@@ -11,7 +11,7 @@
 #define LOG_MODULE "BLE-CL"
 #define LOG_LEVEL LOG_LEVEL_MAC
 
-enum { ADV_DATA_MAX_LEN = 31 };
+enum { ADV_DATA_MAX_LEN = 1650 };
 enum { GAP_ADV_OVERHEAD = 2 };
 enum { ADV_TYPE = 0xff };
 
@@ -62,8 +62,7 @@ static int off() {
 }
 
 static int max_payload() {
-    return 240;
-    //return ADV_DATA_MAX_LEN - GAP_ADV_OVERHEAD - 6 - 6;
+    return ADV_DATA_MAX_LEN - GAP_ADV_OVERHEAD - 6 - 6;
 }
 
 static void init() {

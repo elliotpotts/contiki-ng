@@ -242,75 +242,45 @@ write_ext_adv_hdr(uint8_t *out,
 enum { hello_world_len = 13 };
 uint8_t hello_world[hello_world_len] = "Hello, World!";
 
+enum { lorem_ipsum_len = 255 };
+uint8_t lorem_ipsum[lorem_ipsum_len] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. In sem ipsum, dapibus commodo risus eget, porta egestas nunc. Nam ultricies enim non quam accumsan vestibulum. Mauris venenatis consectetur diam, nec eleifend odio blandit ac. Duis ac interdum amet.";
+
 /* Advertising */
 ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsigned adv_data_len) {
   // We can't send and scan at the same time, so disable scanning
   set_scan_enable(0, 0);
 
   unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE);
-  unsigned long adv_ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
-  unsigned long adv_aux0_start = adv_ext_start + 60000;
-  unsigned long adv_aux1_start = adv_aux0_start + 60000;
+  unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE);
+  unsigned long aux_tgt = ext_start + 5000;
+  unsigned long aux_start = aux_tgt - 680;
 
   rfc_bleAdvOutput_t output = { 0 }; // clear all counters
 
   unsigned common_set_id = random_rand() % 16;
-
-  /* PACKET 3 */
-  adi_t aux_adv1_adi = {
-    .set_id = common_set_id,
-    .data_id = random_rand() % 4096
-  };
-  uint8_t aux_adv1_hdr[64];
-  write_ext_adv_hdr_result_t aux_adv1_hdr_result = write_ext_adv_hdr(aux_adv1_hdr, NULL, NULL, NULL, &aux_adv1_adi, NULL, NULL, NULL);
-  rfc_ble5ExtAdvEntry_t aux_adv1_entry = {
-    .extHdrInfo = { .length = aux_adv1_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
-    .extHdrFlags = aux_adv1_hdr_result.flags,
-    .pExtHeader = aux_adv1_hdr,
-    .advDataLen = hello_world_len,
-    .pAdvData = hello_world
-  };
-  rfc_ble5AdvAuxPar_t aux_adv1_params = { .pAdvPkt = (uint8_t*) &aux_adv1_entry };
-  rfc_CMD_BLE5_ADV_AUX_t aux_adv1_cmd = {
-    .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = adv_aux1_start - 800,
-    .startTrigger = { .triggerType = TRIG_ABSTIME },
-    .condition = { .rule = COND_NEVER },
-    .channel = 12,
-    .pParams = &aux_adv1_params,
-    .pOutput = &output
-  };
 
   /* PACKET 2 */
   adi_t aux_adv0_adi = {
     .set_id = common_set_id,
     .data_id = random_rand() % 4096
   };
-  aux_ptr_t aux_adv1_aux_ptr = {
-    .channel_ix = aux_adv1_cmd.channel,
-    /*.offset_units = <filled by radio cpu> */
-    /*.aux_offset = <filled by radio cpu> */
-  };
   uint8_t aux_adv0_hdr[64];
-  write_ext_adv_hdr_result_t aux_adv0_hdr_result = write_ext_adv_hdr(aux_adv0_hdr, NULL, NULL, NULL, &aux_adv0_adi, &aux_adv1_aux_ptr, NULL, NULL);
+  write_ext_adv_hdr_result_t aux_adv0_hdr_result = write_ext_adv_hdr(aux_adv0_hdr, NULL, NULL, NULL, &aux_adv0_adi, NULL, NULL, NULL);
   rfc_ble5ExtAdvEntry_t aux_adv0_entry = {
     .extHdrInfo = { .length = aux_adv0_hdr_result.length + 1 }, // +1 because radio cpu adds flags for us
     .extHdrFlags = aux_adv0_hdr_result.flags,
     .pExtHeader = aux_adv0_hdr,
-    .advDataLen = hello_world_len,
-    .pAdvData = hello_world
+    .advDataLen = 0,
+    .pAdvData = NULL
   };
   rfc_ble5AdvAuxPar_t aux_adv0_params = {
-    .pAdvPkt = (uint8_t*) &aux_adv0_entry,
-    .auxPtrTargetType = TRIG_ABSTIME,
-    .auxPtrTargetTime = adv_aux1_start
+    .pAdvPkt = (uint8_t*) &aux_adv0_entry
   };
   rfc_CMD_BLE5_ADV_AUX_t aux_adv0_cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
-    .startTime = adv_aux0_start - 800,
+    .startTime = aux_start,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
-    .pNextOp = (rfc_radioOp_t*) &aux_adv1_cmd,
-    .condition = { .rule = COND_ALWAYS },
+    .condition = { .rule = COND_NEVER },
     .channel = 20,
     .pParams = &aux_adv0_params,
     .pOutput = &output
@@ -339,11 +309,11 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
   rfc_ble5AdvExtPar_t adv_ext_params = {
     .pAdvPkt = (uint8_t*) &adv_ext_entry,
     .auxPtrTargetType = TRIG_ABSTIME,
-    .auxPtrTargetTime = adv_aux0_start
+    .auxPtrTargetTime = aux_tgt
   };
   rfc_CMD_BLE5_ADV_EXT_t adv_ext_cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
-    .startTime = adv_ext_start,
+    .startTime = ext_start,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
     .pNextOp = (rfc_radioOp_t*) &aux_adv0_cmd,
     .condition = { .rule = COND_ALWAYS },
@@ -352,25 +322,24 @@ ble_result_t adv_ext(const uint8_t *tgt_bd_addr, const uint8_t *adv_data, unsign
     .pOutput = &output
   };
 
-  // Submit command
-  //if(on() != BLE_RESULT_OK) {
-  //  LOG_DBG("could not enable rf core prior to ADV_EXT \n");
-  //  return BLE_RESULT_ERROR;
-  //}
-  long unsigned before_send_adv_ext = RTIMER_NOW();
   rf_ble_cmd_send((uint8_t*) &adv_ext_cmd);
-  long unsigned after_send_adv_ext = RTIMER_NOW();
-  rf_ble_cmd_wait((uint8_t*) &adv_ext_cmd);
-  long unsigned after_wait_adv_ext = RTIMER_NOW();
-  rf_ble_cmd_wait((uint8_t*) &aux_adv0_cmd);
-  long unsigned after_wait_aux_adv0 = RTIMER_NOW();
-    rf_ble_cmd_wait((uint8_t*) &aux_adv1_cmd);
-  long unsigned after_wait_aux_adv1 = RTIMER_NOW();
-  LOG_DBG("started sending adv_ext at %lu\n", before_send_adv_ext);
-  LOG_DBG("finished sending & started waiting for adv_ext at %lu\n", after_send_adv_ext);
-  LOG_DBG("finished waiting for adv_ext & started waiting for aux_adv at %lu\n", after_wait_adv_ext);
-  LOG_DBG("finished waiting for aux_adv0 at %lu\n", after_wait_aux_adv0);
-  LOG_DBG("finished waiting for aux_adv0 at %lu\n", after_wait_aux_adv1);
+
+  long unsigned ext_sent = RTIMER_NOW();
+  long unsigned ext_started;
+  long unsigned aux_started;
+
+  while (ext_started = RTIMER_NOW(), adv_ext_cmd.status != 2) {
+  }
+  while (aux_started = RTIMER_NOW(), aux_adv0_cmd.status != 2) {
+  }
+
+  LOG_DBG("       base -> %lu\n", base);
+  LOG_DBG("  ext_start -> %lu\n", ext_start);
+  LOG_DBG("    aux_tgt -> %lu\n", aux_tgt);
+  LOG_DBG("  aux_start -> %lu\n", aux_start);
+  LOG_DBG("   ext_sent -> %lu\n", ext_sent);
+  LOG_DBG("ext_started -> %lu\n", ext_started);
+  LOG_DBG("aux_started -> %lu\n", aux_started);
 
   set_scan_enable(1,0);
   return BLE_RESULT_OK;
