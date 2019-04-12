@@ -184,19 +184,22 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
 			      const aux_ptr_t *aux_ptr,
 			      const uint8_t *data_begin,
 			      const uint8_t *data_end) {   
-  rfc_bleAdvOutput_t output = { 0 };
+  unsigned data_len = data_end - data_begin;
+  if (data_len <= BLE5_ADV_DATA_MAX_SIZE - BLE_ADDR_SIZE - sizeof(*adi) - sizeof(*aux_ptr)) {
+    // Total remaining data will fit in this IND.
+    // We are the first and last packet therefore no need for an adi nor an aux_ptr
+    adi = NULL;
+    aux_ptr = NULL;
+  }
 
   uint8_t adv_addr[BLE_ADDR_SIZE];
   ble_addr_cpy_to(adv_addr);
 
   uint8_t hdr[BLE5_EXT_HDR_MAX_SIZE];
-  if (data_end - data_begin <= sizeof(*aux_ptr)) {
-    aux_ptr = NULL;
-  }
   write_ext_adv_hdr_result_t hdr_result = write_ext_adv_hdr(hdr, NULL, adv_addr, tgt_addr, adi, aux_ptr, NULL, NULL);
   unsigned hdr_tot_len = hdr_result.length + 1; // + 1 because radio cpu adds flags for us
   unsigned max_adv_data_len = BLE5_ADV_DATA_MAX_SIZE - hdr_tot_len;
-  unsigned adv_data_len = min(max_adv_data_len, data_end - data_begin);
+  unsigned adv_data_len = min(max_adv_data_len, data_len);
   
   unsigned long start_time = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE) + AUX_TGT_DELAY_TICKS;
     
@@ -212,6 +215,7 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
     .auxPtrTargetType = TRIG_ABSTIME,
     .auxPtrTargetTime = start_time + AUX_TGT_DELAY_TICKS
   };
+  rfc_bleAdvOutput_t output = { 0 };
   rfc_CMD_BLE5_ADV_EXT_t cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
     .startTime = start_time - ADV_PREPROCESSING_TICKS,
@@ -239,17 +243,19 @@ ble5_ext_adv_result_t aux_adv(ble5_ext_adv_result_t *prev_result,
 			      const uint8_t *data_begin,
 			      const uint8_t *data_end) {
   advertiser_t* advertiser = prev_result->radio_data;
-  rfc_bleAdvOutput_t output = { 0 };
 
-  uint8_t hdr[BLE5_EXT_HDR_MAX_SIZE];
-  if (data_end - data_begin <= BLE5_ADV_DATA_MAX_SIZE - sizeof(*aux_ptr)) {
-    LOG_DBG("Last packet!\n");
+  unsigned data_len = data_end - data_begin;
+  if (data_len <= BLE5_ADV_DATA_MAX_SIZE - sizeof(*adi)) {
+    // Total remaining data will fit in this IND.
+    // We are the last packet therefore no need for an aux_ptr
     aux_ptr = NULL;
   }
+
+  uint8_t hdr[BLE5_EXT_HDR_MAX_SIZE];
   write_ext_adv_hdr_result_t hdr_result = write_ext_adv_hdr(hdr, NULL, NULL, NULL, adi, aux_ptr, NULL, NULL);
   unsigned hdr_tot_len = hdr_result.length + 1; // + 1 because radio cpu adds flags for us
   unsigned max_adv_data_len = BLE5_ADV_DATA_MAX_SIZE - hdr_tot_len;
-  unsigned adv_data_len = min(max_adv_data_len, data_end - data_begin);
+  unsigned adv_data_len = min(max_adv_data_len, data_len);
 
   unsigned long start_time = advertiser->last_start_time + AUX_TGT_DELAY_TICKS;
   
@@ -265,6 +271,7 @@ ble5_ext_adv_result_t aux_adv(ble5_ext_adv_result_t *prev_result,
     .auxPtrTargetType = TRIG_ABSTIME,
     .auxPtrTargetTime = start_time + AUX_TGT_DELAY_TICKS
   };
+  rfc_bleAdvOutput_t output = { 0 };
   rfc_CMD_BLE5_ADV_AUX_t cmd = {
     .commandNo = CMD_BLE5_ADV_AUX,
     .startTime = start_time - ADV_PREPROCESSING_TICKS,
@@ -300,7 +307,7 @@ static unsigned random_data_id() {
 
 void test_ble5_adv() {
   uint8_t* data = lorem_ipsum;
-  uint8_t* data_end = lorem_ipsum + lorem_ipsum_len;
+  uint8_t* data_end = lorem_ipsum + 249;//lorem_ipsum_len;
   adi_t adi = (adi_t) {
     .set_id = random_set_id(),
     .data_id = random_data_id()
