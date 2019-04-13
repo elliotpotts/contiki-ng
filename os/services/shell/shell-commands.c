@@ -835,11 +835,10 @@ static PT_THREAD(cmd_ble_addr(struct pt *pt, shell_output_func output, char *arg
 #endif
 
 #if MAC_CONF_WITH_BLE_CL
-void test_ble5_adv();
 static PT_THREAD(cmd_ble_adv(struct pt *pt, shell_output_func output, char *args)) {
   PT_BEGIN(pt);
   ble_hal.set_scan_enable(0, 0);
-  test_ble5_adv();
+  NETSTACK_MAC.send((mac_callback_t)(NULL), NULL);
   ble_hal.set_scan_enable(1, 0);
   PT_END(pt);
 }
