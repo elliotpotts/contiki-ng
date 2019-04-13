@@ -16,22 +16,22 @@
 
 enum { gap_adv_overhead = 2 };
 enum { gap_adv_type = 0xff };
-enum { adv_links_max_num = 6 };
+enum { adv_chain_entries_max_num = 6 };
 
 extern const struct ble_hal_driver ble_hal;
 
 // A single advertising packet belonging to a chain of advertisements (a "link")
-typedef struct adv_link_t adv_link_t;
-struct adv_link_t {
+typedef struct adv_chain_entry_t adv_chain_entry_t;
+struct adv_chain_entry_t {
   bool populated;
   bool is_head;
   ext_adv_pdu pdu;
-  adv_link_t* next_in_chain;
+  adv_chain_entry_t* next;
 };
 
 // A BLE Connectionless Link Layer
 typedef struct {
-  adv_link_t adv_links[adv_links_max_num];
+  adv_chain_entry_t adv_links[adv_chain_entries_max_num];
 } ble_cl_t;
 static ble_cl_t g_ble_cl;
 
@@ -40,14 +40,14 @@ static void init_ble_cl(ble_cl_t* ble_cl) {
 }
 
 /* Start a new chain with the given pdu as it's first link */
-static adv_link_t* ble_cl_chain_start(ble_cl_t* ble_cl, const ext_adv_pdu* pdu) {
-  for (int i = 0; i < adv_links_max_num; i++) {
-    adv_link_t* link = &ble_cl->adv_links[i];
+static adv_chain_entry_t* ble_cl_chain_start(ble_cl_t* ble_cl, const ext_adv_pdu* pdu) {
+  for (int i = 0; i < adv_chain_entries_max_num; i++) {
+    adv_chain_entry_t* link = &ble_cl->adv_links[i];
     if (!link->populated) {
       link->populated = true;
       link->is_head = true;
       memcpy(&link->pdu, pdu, sizeof(*pdu));
-      link->next_in_chain = NULL;
+      link->next = NULL;
       return link;
     }
   }
@@ -55,9 +55,9 @@ static adv_link_t* ble_cl_chain_start(ble_cl_t* ble_cl, const ext_adv_pdu* pdu) 
 }
 
 /* Find the first link the given pdu belongs to, or NULL if none exists */
-static adv_link_t* ble_cl_chain_get_head(ble_cl_t* ble_cl, const ext_adv_pdu* pdu) {
-  for (int i = 0; i < adv_links_max_num; i++) {
-    adv_link_t* link = &ble_cl->adv_links[i];
+static adv_chain_entry_t* ble_cl_chain_get_head(ble_cl_t* ble_cl, const ext_adv_pdu* pdu) {
+  for (int i = 0; i < adv_chain_entries_max_num; i++) {
+    adv_chain_entry_t* link = &ble_cl->adv_links[i];
     if (link->populated && link->is_head && link->pdu.adi.set_id == pdu->adi.set_id) {
       return link;
     }
@@ -66,37 +66,37 @@ static adv_link_t* ble_cl_chain_get_head(ble_cl_t* ble_cl, const ext_adv_pdu* pd
 }
 
 /* Append the given pdu to the end of the chain containing the given link */
-static adv_link_t* ble_cl_chain_append(ble_cl_t* ble_cl, adv_link_t* head, const ext_adv_pdu* pdu) {
-  adv_link_t* last = head;
-  while (last->next_in_chain != NULL) {
+static adv_chain_entry_t* ble_cl_chain_append(ble_cl_t* ble_cl, adv_chain_entry_t* head, const ext_adv_pdu* pdu) {
+  adv_chain_entry_t* last = head;
+  while (last->next != NULL) {
     // Don't append a duplicated
     if (last->pdu.adi.set_id == pdu->adi.set_id &&
 	last->pdu.adi.data_id == pdu->adi.data_id) {
       LOG_DBG("We've seen %u.%u before; dropping", pdu->adi.set_id, pdu->adi.data_id);
       return NULL;
     }
-    last = last->next_in_chain;
+    last = last->next;
   }
   // find free slot to put link
-  for (int i = 0; i < adv_links_max_num; i++) {
-    adv_link_t* link = &ble_cl->adv_links[i];
+  for (int i = 0; i < adv_chain_entries_max_num; i++) {
+    adv_chain_entry_t* link = &ble_cl->adv_links[i];
     if (!link->populated) {
       link->populated = true;
       link->is_head = false;
       memcpy(&link->pdu, pdu, sizeof(*pdu));
-      last->next_in_chain = link;
+      last->next = link;
       return link;
     }
   }
   return NULL;
 };
 
-static adv_link_t* ble_cl_chain_finish(ble_cl_t* ble_cl, adv_link_t* head, const ext_adv_pdu* last_pdu) {
+static adv_chain_entry_t* ble_cl_chain_finish(ble_cl_t* ble_cl, adv_chain_entry_t* head, const ext_adv_pdu* last_pdu) {
   //TODO: actually finish
   LOG_DBG("FINISHING WITH DATA:\n");
   while (head != NULL) {
     LOG_DBG("    %s\n", head->pdu.adv_data);
-    head = head->next_in_chain;
+    head = head->next;
   }
   LOG_DBG("    %s\n", last_pdu->adv_data);
   return NULL;
@@ -269,7 +269,7 @@ static void packet_input(void) {
     return;
   } else {
     // Are we tracking this chain yet?
-    adv_link_t* chain_head = ble_cl_chain_get_head(ble_cl, &pdu);
+    adv_chain_entry_t* chain_head = ble_cl_chain_get_head(ble_cl, &pdu);
     if (chain_head) {
       // Yes, so continue or finish it
       if (pdu.aux_ptr_present) {
