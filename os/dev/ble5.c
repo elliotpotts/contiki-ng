@@ -33,7 +33,7 @@ write_ext_adv_hdr(uint8_t *out,
   }
   if (tgt_addr) {
     flags_out |= ble5_adv_ext_hdr_flag_tgt_a;
-    rmemcpy(out, tgt_addr, BLE_ADDR_SIZE);
+    memcpy(out, tgt_addr, BLE_ADDR_SIZE);
     out += BLE_ADDR_SIZE;
     length_out += BLE_ADDR_SIZE;
   }

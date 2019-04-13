@@ -25,10 +25,10 @@
 #define RPL_CONF_WITH_PROBING                   0
 
 /* network layer settings */
-#define UIP_CONF_ROUTER                         1
+#define UIP_CONF_ROUTER                         0
 #define UIP_CONF_ND6_SEND_RA                    0
-#define UIP_CONF_ND6_SEND_NA                    0
-#define UIP_CONF_ND6_SEND_NS                    0
+#define UIP_CONF_ND6_SEND_NA                    1
+#define UIP_CONF_ND6_SEND_NS                    1
 
 /* 6LoWPAN settings */
 #define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         255

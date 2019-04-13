@@ -44,7 +44,7 @@ LPM_MODULE(cc26xx_ble_lpm_module, request, NULL, NULL, LPM_DOMAIN_NONE);
 #define SCAN_RX_BUFFERS_DATA_LEN       260
 #define SCAN_RX_BUFFERS_NUM            8
 #define SCAN_PREPROCESSING_TIME_TICKS  65
-#define SCAN_RX_INTERVAL               (ticks_from_unit(60, TIME_UNIT_MS))
+#define SCAN_RX_INTERVAL               (ticks_from_unit(4, TIME_UNIT_MS))
 
 typedef struct {
   rfc_dataEntry_t entry;
@@ -154,7 +154,8 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
 			      const adi_t *adi,
 			      const aux_ptr_t *aux_ptr,
 			      const uint8_t *data_begin,
-			      const uint8_t *data_end) {   
+			      const uint8_t *data_end) {
+  LOG_DBG("adv_ext: broadcast? %u\n", tgt_addr == NULL);
   unsigned data_len = data_end - data_begin;
   if (data_len <= BLE5_ADV_DATA_MAX_SIZE - BLE_ADDR_SIZE - sizeof(*adi) - sizeof(*aux_ptr)) {
     // Total remaining data will fit in this IND.
@@ -197,7 +198,6 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
     .pOutput = &output
   };
   rf_ble_cmd_send((uint8_t*) &cmd);
-  LOG_DBG("    ext_start: %lu\n", start_time);
   g_advertiser.last_start_time = start_time;
   memcpy(&g_advertiser.last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
   rf_ble_cmd_wait((uint8_t*) &cmd);
@@ -366,10 +366,7 @@ static ble_result_t reset(void) {
     return BLE_RESULT_ERROR;
   }
   init_scanner(&g_scanner);
-  if (scanner_start(&g_scanner) != BLE_RESULT_OK) {
-    LOG_DBG("Errror initing scanner!\n");
-    return BLE_RESULT_ERROR;
-  }
+  scanner_start(&g_scanner);
   return BLE_RESULT_OK;
 }
 
@@ -389,6 +386,8 @@ static void scan_rx(struct rtimer *t, void *userdata) {
       g_payload = payload;
       g_payload_end = payload_end;
       NETSTACK_MAC.input();
+    } else {
+      LOG_DBG("Unknown adv type\n");
     }
     /* free current entry */
     scanner->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
