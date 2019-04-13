@@ -14,11 +14,8 @@
 #define LOG_MODULE "BLE-CL"
 #define LOG_LEVEL LOG_LEVEL_MAC
 
-//enum { BLE5_ADV_DATA_MAX_TOTAL_SIZE = 1650 };
 enum { GAP_ADV_OVERHEAD = 2 };
 enum { ADV_TYPE = 0xff };
-enum { FIRST_FRAGMENT_MAX_SIZE = 230 };
-enum { SUBSEQUENT_FRAGMENT_MAX_SIZE = 230 };
 
 extern const struct ble_hal_driver ble_hal;
 
@@ -67,19 +64,15 @@ static void packet_input(void) {
 }
 
 static int on() {
-  LOG_DBG("on\n");
-  ble_hal.set_scan_enable(1, 0);
   return 0;
 }
 
 static int off() {
-  LOG_DBG("off\n");
   return 0;
 }
 
 static void init() {
   ble_hal.reset();
-  NETSTACK_MAC.on();
 }
 
 const struct mac_driver ble_cl_driver = {

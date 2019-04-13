@@ -7,6 +7,7 @@
 #endif
 
 #include <string.h>
+#include <assert.h>
 
 #include "os/sys/rtimer.h"
 #include "os/sys/log.h"
@@ -43,6 +44,7 @@ LPM_MODULE(cc26xx_ble_lpm_module, request, NULL, NULL, LPM_DOMAIN_NONE);
 #define SCAN_RX_BUFFERS_DATA_LEN       260
 #define SCAN_RX_BUFFERS_NUM            8
 #define SCAN_PREPROCESSING_TIME_TICKS  65
+#define SCAN_RX_INTERVAL               (ticks_from_unit(60, TIME_UNIT_MS))
 
 typedef struct {
   rfc_dataEntry_t entry;
@@ -58,9 +60,6 @@ struct adv_link_t {
 };
 
 typedef struct {
-  /* state */
-  bool scanning;
-  rtimer_clock_t scan_start;
   struct rtimer timer;
   /* data */
   dataQueue_t rx_queue;
@@ -131,17 +130,6 @@ ble_result_t on(void) {
 void off(void) {
   rf_core_power_down();
   oscillators_switch_to_hf_rc();
-}
-
-static ble_result_t reset(void) {
-  lpm_register_module(&cc26xx_ble_lpm_module);
-  rf_core_set_modesel();
-  init_scanner(&g_scanner);
-  if(on() != BLE_RESULT_OK) {
-    return BLE_RESULT_ERROR;
-  }
-  off();
-  return BLE_RESULT_OK;
 }
 
 static ble_result_t read_bd_addr(uint8_t *addr) {
@@ -218,7 +206,7 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
   rfc_bleAdvOutput_t output = { 0 };
   rfc_CMD_BLE5_ADV_EXT_t cmd = {
     .commandNo = CMD_BLE5_ADV_EXT,
-    .startTime = start_time - ADV_PREPROCESSING_TICKS,
+    .startTime = start_time,
     .startTrigger = { .triggerType = TRIG_ABSTIME },
     .condition = { .rule = COND_NEVER },
     .channel = 37,
@@ -307,7 +295,7 @@ static unsigned random_data_id() {
 
 void test_ble5_adv() {
   uint8_t* data = lorem_ipsum;
-  uint8_t* data_end = lorem_ipsum + 249;//lorem_ipsum_len;
+  uint8_t* data_end = lorem_ipsum + lorem_ipsum_len;
   adi_t adi = (adi_t) {
     .set_id = random_set_id(),
     .data_id = random_data_id()
@@ -330,7 +318,7 @@ void test_ble5_adv() {
 
 /* Scanning */
 static void init_scanner(ble_scanner_t* scanner) {
-  memset(scanner, 0, sizeof(ble_scanner_t));
+  memset(scanner, 0, sizeof(*scanner));
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
     rfc_dataEntry_t* e = &scanner->rx_buffers[i].entry;
     e->pNextEntry = (uint8_t*) &scanner->rx_buffers[(i + 1) % SCAN_RX_BUFFERS_NUM];
@@ -396,6 +384,46 @@ static void init_scanner(ble_scanner_t* scanner) {
   };
 }
 
+ble_result_t scanner_stop(ble_scanner_t* scanner) {
+  rfc_CMD_STOP_t cmd = {
+    .commandNo = CMD_STOP
+  };
+  rf_ble_cmd_send((uint8_t*)&cmd);
+  uint_fast8_t cmd_status = rf_core_wait_cmd_done((uint8_t*)&cmd);
+  assert(cmd_status = RF_CORE_CMD_OK);
+  return BLE_RESULT_OK;
+}
+
+static void scan_rx(struct rtimer *t, void *userdata);
+ble_result_t scanner_start(ble_scanner_t* scanner) {
+  if (scanner->cmd.status == RF_CORE_RADIO_OP_STATUS_ACTIVE) {
+    // Scanner command already running
+    //potential bug: need to set rtimer again?
+    return BLE_RESULT_OK;
+  } else {
+    scanner->cmd.status = RF_CORE_RADIO_OP_STATUS_IDLE;
+    rf_ble_cmd_send((uint8_t*) &scanner->cmd);
+    //and PRAY!
+    rtimer_set(&scanner->timer, RTIMER_NOW() + SCAN_RX_INTERVAL, 0, scan_rx, scanner);
+    return BLE_RESULT_OK;
+  }
+}
+
+static ble_result_t reset(void) {
+  lpm_register_module(&cc26xx_ble_lpm_module);
+  rf_core_set_modesel();
+  if(on() != BLE_RESULT_OK) {
+    LOG_DBG("Error turning on!\n");
+    return BLE_RESULT_ERROR;
+  }
+  init_scanner(&g_scanner);
+  if (scanner_start(&g_scanner) != BLE_RESULT_OK) {
+    LOG_DBG("Errror initing scanner!\n");
+    return BLE_RESULT_ERROR;
+  }
+  return BLE_RESULT_OK;
+}
+
 /* Start a new chain with the given pdu as it's first link */
 static adv_link_t* scanner_chain_start(ble_scanner_t* scanner, const ext_adv_pdu* pdu) {
   for (int i = 0; i < SCAN_RX_BUFFERS_NUM; i++) {
@@ -449,6 +477,7 @@ static adv_link_t* scanner_chain_append(ble_scanner_t* scanner, adv_link_t* head
 };
 
 static adv_link_t* scanner_chain_finish(ble_scanner_t* scanner, adv_link_t* head, const ext_adv_pdu* last_pdu) {
+  //TODO: actually finish
   LOG_DBG("FINISHING WITH DATA:\n");
   while (head != NULL) {
     LOG_DBG("    %s\n", head->pdu.adv_data);
@@ -472,45 +501,45 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
       pdu.adv_a_present = true;
       rmemcpy(&pdu.adv_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
-      LOG_DBG("pdu.adv_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-	      pdu.adv_a[0], pdu.adv_a[1], pdu.adv_a[2], pdu.adv_a[3], pdu.adv_a[4], pdu.adv_a[5]);
+      /* LOG_DBG("pdu.adv_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", */
+      /* 	      pdu.adv_a[0], pdu.adv_a[1], pdu.adv_a[2], pdu.adv_a[3], pdu.adv_a[4], pdu.adv_a[5]); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
       pdu.tgt_a_present = true;
       rmemcpy(&pdu.tgt_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
-      LOG_DBG("pdu.tgt_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-	      pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]);
+      /* LOG_DBG("pdu.tgt_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", */
+      /* 	      pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
       pdu.adi_present = true;
       memcpy(&pdu.adi, payload, sizeof(pdu.adi));
       payload += sizeof(pdu.adi);
-      LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id);
+      /* LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
       pdu.aux_ptr_present = true;
       memcpy(&pdu.aux_ptr, payload, sizeof(pdu.aux_ptr));
       payload += sizeof(pdu.aux_ptr);
-      LOG_DBG("pdu.aux_ptr is present: {\n\t.channel_ix = %u,\n\t.clock_accuracy = %u,\n\t.offset_units = %u,\n\t.aux_offset = %u,\n\t.aux_phy = %u,\n}\n",
-	      pdu.aux_ptr.channel_ix, pdu.aux_ptr.clock_accuracy, pdu.aux_ptr.offset_units, pdu.aux_ptr.aux_offset, pdu.aux_ptr.aux_phy);
+      /* LOG_DBG("pdu.aux_ptr is present: {\n\t.channel_ix = %u,\n\t.clock_accuracy = %u,\n\t.offset_units = %u,\n\t.aux_offset = %u,\n\t.aux_phy = %u,\n}\n", */
+      /* 	      pdu.aux_ptr.channel_ix, pdu.aux_ptr.clock_accuracy, pdu.aux_ptr.offset_units, pdu.aux_ptr.aux_offset, pdu.aux_ptr.aux_phy); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
       pdu.sync_info_present = true;
       memcpy(&pdu.sync_info, payload, sizeof(pdu.sync_info));
       payload += sizeof(pdu.sync_info);
-      LOG_DBG("pdu.sync_info is present\n");
+      /* LOG_DBG("pdu.sync_info is present\n"); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
       pdu.tx_power_present = true;
       memcpy(&pdu.tx_power, payload, sizeof(pdu.tx_power));
       payload += sizeof(pdu.tx_power);
-      LOG_DBG("pdu.tx_power is present\n");
+      /* LOG_DBG("pdu.tx_power is present\n"); */
     }
   }
 
@@ -581,7 +610,6 @@ static void scanner_recv_ext_adv(ble_scanner_t* scanner, uint8_t *payload, uint8
 
 static void scan_rx(struct rtimer *t, void *userdata) {
   ble_scanner_t *scanner = (ble_scanner_t *)userdata;
-  
   while (scanner->rx_queue_current->entry.status == DATA_ENTRY_FINISHED) {
     uint8_t *rx_data = scanner->rx_queue_current->data;
     uint8_t header_lo = *rx_data++;
@@ -589,13 +617,8 @@ static void scan_rx(struct rtimer *t, void *userdata) {
     uint8_t payload_len = *rx_data++;
     uint8_t *payload = rx_data;
     uint8_t *payload_end = payload + payload_len;
-    switch (pdu_type) {
-    /* case ble_adv_ext_ind: */
-    /* case ble_aux_adv_ind: */
-    /* case ble_aux_chain_ind: */
-    case 7:
+    if (pdu_type == ble5_adv_pdu_type_ext_adv) {
       scanner_recv_ext_adv(scanner, payload, payload_end);
-    default: break;
     }
     /* free current entry */
     scanner->rx_queue_current->entry.status = DATA_ENTRY_PENDING;
@@ -604,33 +627,18 @@ static void scan_rx(struct rtimer *t, void *userdata) {
 
   if (scanner->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_ERROR_RXBUF) {
     LOG_ERR("Scan rx buffer is out of space! TODO: restart scanner here\n");
-    g_scanner.scanning = false;
+  } else if (scanner->cmd.status == RF_CORE_RADIO_OP_STATUS_BLE_DONE_OK) {
+    scanner_start(scanner);
   } else {
-    rtimer_set(&scanner->timer, RTIMER_NOW() + ticks_from_unit(60, TIME_UNIT_MS), 0, scan_rx, scanner);
+    rtimer_set(&scanner->timer, RTIMER_NOW() + SCAN_RX_INTERVAL, 0, scan_rx, scanner);
   }
 }
 
 ble_result_t set_scan_enable(unsigned short enable, unsigned short filter_duplicates) {
-  if(enable && !g_scanner.scanning) {
-    if(on() != BLE_RESULT_OK) {
-     LOG_ERR("could not enable rf core prior to scanning\n");
-     return BLE_RESULT_ERROR;
-    }
-    rf_ble_cmd_send((uint8_t*)&g_scanner.cmd);
-    g_scanner.scanning = true;
-    rtimer_set(&g_scanner.timer, RTIMER_NOW() + ticks_from_unit(100, TIME_UNIT_MS), 0, scan_rx, &g_scanner);
-    return BLE_RESULT_OK;
-  } else if (!enable) {
-    rfc_CMD_STOP_t cmd = {
-      .commandNo = CMD_STOP
-    };
-    rf_ble_cmd_send((uint8_t*)&cmd);
-    rf_core_wait_cmd_done((uint8_t*)&cmd);
-    g_scanner.scanning = false;
-    return BLE_RESULT_OK;
+  if (enable) {
+    return scanner_start(&g_scanner);
   } else {
-    /* already on */
-    return BLE_RESULT_OK;
+    return scanner_stop(&g_scanner);
   }
 }
 

@@ -11,6 +11,10 @@ enum { BLE5_ADV_DATA_MAX_TOTAL_SIZE = 1650 };
 enum { BLE5_ADV_DATA_MAX_SIZE = 254 };
 
 typedef enum {
+    ble5_adv_pdu_type_ext_adv = 7
+} ble5_adv_pdu_type;
+
+typedef enum {
   ble5_adv_ext_hdr_flag_adv_a = 1 << 0,
   ble5_adv_ext_hdr_flag_tgt_a = 1 << 1,
   ble5_adv_ext_hdr_flag_adi = 1 << 3,
