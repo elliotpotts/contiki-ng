@@ -119,6 +119,7 @@ ble_result_t on(void) {
 }
 
 void off(void) {
+  LOG_DBG("Turning off!\n");
   rf_core_power_down();
   oscillators_switch_to_hf_rc();
 }
@@ -137,7 +138,7 @@ unsigned min(unsigned lhs, unsigned rhs) {
 }
 
 enum { AUX_TGT_DELAY_TICKS = 60000 };
-enum { ADV_PREPROCESSING_TICKS = 800 };
+enum { ADV_PREPROCESSING_TICKS = 1000 };
 
 /* unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE); */
 /* unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE); */
@@ -155,7 +156,6 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
 			      const aux_ptr_t *aux_ptr,
 			      const uint8_t *data_begin,
 			      const uint8_t *data_end) {
-  LOG_DBG("adv_ext: broadcast? %u\n", tgt_addr == NULL);
   unsigned data_len = data_end - data_begin;
   if (data_len <= BLE5_ADV_DATA_MAX_SIZE - BLE_ADDR_SIZE - sizeof(*adi) - sizeof(*aux_ptr)) {
     // Total remaining data will fit in this IND.
@@ -196,7 +196,7 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
     .channel = 37,
     .pParams = &params,
     .pOutput = &output
-  };
+  };  
   rf_ble_cmd_send((uint8_t*) &cmd);
   g_advertiser.last_start_time = start_time;
   memcpy(&g_advertiser.last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
@@ -252,8 +252,8 @@ ble5_ext_adv_result_t aux_adv(ble5_ext_adv_result_t *prev_result,
     .pParams = &params,
     .pOutput = &output
   };
+  LOG_DBG("About to send\n");
   rf_ble_cmd_send((uint8_t*) &cmd);
-  LOG_DBG("    aux_start: %lu\n", start_time);
   advertiser->last_start_time = start_time;
   memcpy(&advertiser->last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
   

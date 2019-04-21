@@ -31,7 +31,7 @@
 #define UIP_CONF_ND6_SEND_NS                    1
 
 /* 6LoWPAN settings */
-#define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         255
+#define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         1600
 #define SICSLOWPAN_CONF_COMPRESSION             SICSLOWPAN_COMPRESSION_6LORH
 #define SICSLOWPAN_CONF_COMPRESSION_THRESHOLD   0  /* always use compression */
 #define SICSLOWPAN_CONF_FRAG                    0

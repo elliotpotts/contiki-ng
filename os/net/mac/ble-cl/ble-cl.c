@@ -165,8 +165,8 @@ static void send_packet(mac_callback_t sent, void *ptr) {
   uint8_t *maybe_tgt_ble_addr = NULL;
   if (!packetbuf_holds_broadcast()) {
     eui64_to_ble_addr(tgt_ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
-    LOG_DBG("Sending to %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-	    tgt_ble_addr[0], tgt_ble_addr[1], tgt_ble_addr[2], tgt_ble_addr[3], tgt_ble_addr[4], tgt_ble_addr[5]);
+    LOG_DBG("AKA ^%.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
+    	    tgt_ble_addr[0], tgt_ble_addr[1], tgt_ble_addr[2], tgt_ble_addr[3], tgt_ble_addr[4], tgt_ble_addr[5]);
     maybe_tgt_ble_addr = tgt_ble_addr;
   } else {
     LOG_DBG("Sending broadcast\n");
@@ -187,13 +187,16 @@ static void send_packet(mac_callback_t sent, void *ptr) {
   };
   // pause scanning while we send
   ble_hal.set_scan_enable(0, 0);
+  LOG_DBG("---> Starting chain of %u octets\n", data_len);
   ble5_ext_adv_result_t result = ble_hal.adv_ext(maybe_tgt_ble_addr, &adi, &aux_ptr, data, data_end);
   data += result.bytes_sent;
   while (data < data_end) {
     adi.data_id = random_data_id();
     result = ble_hal.aux_adv(&result, &adi, &aux_ptr, data, data_end);
+    LOG_DBG("---> Continuing chain, %u octets left\n", data_end - data);
     data += result.bytes_sent;
   }
+  LOG_DBG("---> Chain finished\n");
 
   mac_call_sent_callback(sent, ptr, MAC_TX_OK, 1);
   ble_hal.set_scan_enable(1, 0);
@@ -211,7 +214,7 @@ static void rmemcpy(void *restrict dst, const void *restrict src, size_t count) 
 extern uint8_t* g_payload;
 extern uint8_t* g_payload_end;
 static void packet_input(void) {
-  LOG_DBG("receiving bluetooth adv...\n");
+  /* LOG_DBG("receiving bluetooth adv...\n"); */
   uint8_t* payload = g_payload;
   uint8_t* payload_end = g_payload_end;
   ble_cl_t* ble_cl = &g_ble_cl;
@@ -229,45 +232,45 @@ static void packet_input(void) {
       pdu.adv_a_present = true;
       rmemcpy(&pdu.adv_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
-      LOG_DBG("pdu.adv_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-      	      pdu.adv_a[0], pdu.adv_a[1], pdu.adv_a[2], pdu.adv_a[3], pdu.adv_a[4], pdu.adv_a[5]);
+      /* LOG_DBG("pdu.adv_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", */
+      /* 	      pdu.adv_a[0], pdu.adv_a[1], pdu.adv_a[2], pdu.adv_a[3], pdu.adv_a[4], pdu.adv_a[5]); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tgt_a) {
       pdu.tgt_a_present = true;
       rmemcpy(&pdu.tgt_a, payload, BLE_ADDR_SIZE);
       payload += BLE_ADDR_SIZE;
-      LOG_DBG("pdu.tgt_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-      	      pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]);
+      /* LOG_DBG("pdu.tgt_a is present: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", */
+      /* 	      pdu.tgt_a[0], pdu.tgt_a[1], pdu.tgt_a[2], pdu.tgt_a[3], pdu.tgt_a[4], pdu.tgt_a[5]); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_adi) {
       pdu.adi_present = true;
       memcpy(&pdu.adi, payload, sizeof(pdu.adi));
       payload += sizeof(pdu.adi);
-      LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id);
+      /* LOG_DBG("pdu.adi is present: { .data_id = %u, .set_id = %u } \n", pdu.adi.data_id, pdu.adi.set_id); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_aux_ptr) {
       pdu.aux_ptr_present = true;
       memcpy(&pdu.aux_ptr, payload, sizeof(pdu.aux_ptr));
       payload += sizeof(pdu.aux_ptr);
-      LOG_DBG("pdu.aux_ptr is present: {\n\t.channel_ix = %u,\n\t.clock_accuracy = %u,\n\t.offset_units = %u,\n\t.aux_offset = %u,\n\t.aux_phy = %u,\n}\n",
-      	      pdu.aux_ptr.channel_ix, pdu.aux_ptr.clock_accuracy, pdu.aux_ptr.offset_units, pdu.aux_ptr.aux_offset, pdu.aux_ptr.aux_phy);
+      /* LOG_DBG("pdu.aux_ptr is present: {\n\t.channel_ix = %u,\n\t.clock_accuracy = %u,\n\t.offset_units = %u,\n\t.aux_offset = %u,\n\t.aux_phy = %u,\n}\n", */
+      /* 	      pdu.aux_ptr.channel_ix, pdu.aux_ptr.clock_accuracy, pdu.aux_ptr.offset_units, pdu.aux_ptr.aux_offset, pdu.aux_ptr.aux_phy); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_sync_info) {
       pdu.sync_info_present = true;
       memcpy(&pdu.sync_info, payload, sizeof(pdu.sync_info));
       payload += sizeof(pdu.sync_info);
-      LOG_DBG("pdu.sync_info is present\n");
+      /* LOG_DBG("pdu.sync_info is present\n"); */
     }
 
     if (ext_header_flags & ble5_adv_ext_hdr_flag_tx_power) {
       pdu.tx_power_present = true;
       memcpy(&pdu.tx_power, payload, sizeof(pdu.tx_power));
       payload += sizeof(pdu.tx_power);
-      LOG_DBG("pdu.tx_power is present\n");
+      /* LOG_DBG("pdu.tx_power is present\n"); */
     }
   }
 
@@ -281,7 +284,7 @@ static void packet_input(void) {
   pdu.adv_data_len = adv_data_end - adv_data_begin;
   memcpy(&pdu.adv_data, adv_data_begin, pdu.adv_data_len);
 
-  LOG_DBG("%u bytes of advData present\n", adv_data_end - adv_data_begin);
+  /* LOG_DBG("%u bytes of advData present\n", adv_data_end - adv_data_begin); */
 
   adv_chain_entry_t* head = ble_cl_chain_get_head(ble_cl, &pdu);
   unsigned conditions = ((adv_data_begin != adv_data_end) << 2)
@@ -298,12 +301,12 @@ static void packet_input(void) {
   case 0b111: {
     adv_chain_entry_t* head = ble_cl_chain_get_head(ble_cl, &pdu);
     if (head) {
-      LOG_DBG("Appending to chain\n");
+      LOG_DBG("<--- Continueing chain\n");
       if (!ble_cl_chain_append(ble_cl, head, &pdu)) {
 	LOG_ERR("Failed to append chain entry!\n");
       }
     } else {
-      LOG_DBG("Starting new chain\n");
+      LOG_DBG("<--- Starting chain\n");
       if (!ble_cl_chain_start(ble_cl, &pdu)) {
 	LOG_ERR("Failed to start chain!\n");
       }
@@ -312,58 +315,11 @@ static void packet_input(void) {
   }
   case 0b100:
   case 0b110: {
-    LOG_DBG("Finishing chain\n");
+    LOG_DBG("<--- Finishing chain\n");
     ble_cl_chain_finish(ble_cl, head, &pdu);
     return;
   }
   }
-  
-  /* // If there's no advertising data, there'd better be both an aux_ptr and an adi */
-  /* if (adv_data_begin == adv_data_end && (!pdu.adi_present || !pdu.aux_ptr_present)) { */
-  /*   LOG_DBG("Received ext adv without adv_data nor the means to start a chain; ignoring\n"); */
-  /*   return; */
-  /* } else  if (adv_data_begin != adv_data_end && !pdu.aux_ptr_present) { */
-  /*   LOG_DBG("RECV ACTION: TODO: handle non-chained data; dropping\n"); */
-  /*   return; */
-  /* } else if (adv_data_begin == adv_data_end) { */
-  /*   LOG_DBG("RECV ACTION (or lack thereof): no adv_data; chain will be started on first aux packet\n"); */
-  /*   return; */
-  /* } else { */
-  /*   // Are we tracking this chain yet? */
-  /*   adv_chain_entry_t* chain_head = ble_cl_chain_get_head(ble_cl, &pdu); */
-  /*   if (chain_head) { */
-  /*     // Yes, so continue or finish it */
-  /*     if (pdu.aux_ptr_present) { */
-  /* 	// Continue chain  */
-  /* 	if (ble_cl_chain_append(ble_cl, chain_head, &pdu)) { */
-  /* 	  LOG_DBG("RECV ACTION: Appending did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id); */
-  /* 	} else { */
-  /* 	  LOG_ERR("Could not append did %u to sid %u\n", pdu.adi.data_id, pdu.adi.set_id); */
-  /* 	} */
-  /* 	return; */
-  /*     } else { */
-  /* 	// Finishing */
-  /* 	ble_cl_chain_finish(ble_cl, chain_head, &pdu); */
-  /* 	LOG_DBG("RECV ACTION: Finished chain with sid %u\n", pdu.adi.set_id); */
-  /* 	return; */
-  /*     } */
-  /*   } else { */
-  /*     // No, will there be further aux packets? */
-  /*     if (pdu.aux_ptr_present) { */
-  /* 	// yes, start a new chain */
-  /* 	if (ble_cl_chain_start(ble_cl, &pdu)) { */
-  /* 	  LOG_DBG("RECV ACTION: Started chain sid %u\n", pdu.adi.set_id); */
-  /* 	} else { */
-  /* 	  LOG_ERR("Couldn't start new chain!\n"); */
-  /* 	} */
-  /* 	return; */
-  /*     } else { */
-  /* 	ble_cl_chain_finish(ble_cl, NULL, &pdu); */
-  /* 	LOG_DBG("RECV ACTION: Started and finished chain with sid %u\n", pdu.adi.set_id); */
-  /* 	return; */
-  /*     } */
-  /*   } */
-  /* } */
   LOG_DBG("unaccounted for!\n");
 }
 

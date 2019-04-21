@@ -40,7 +40,6 @@
  */
 
 #include "contiki.h"
-#include "contiki-lib.h"
 #include "contiki-net.h"
 #include "net/ipv6/multicast/uip-mcast6.h"
 #include "sys/energest.h"
@@ -50,11 +49,10 @@
 
 #define DEBUG DEBUG_PRINT
 #include "net/ipv6/uip-debug.h"
-#include "net/routing/routing.h"
 
-#define MAX_PAYLOAD_LEN 120
+//#define MAX_PAYLOAD_LEN 1200
 #define MCAST_SINK_UDP_PORT 3001 /* Host byte order */
-#define SEND_INTERVAL CLOCK_SECOND /* clock ticks */
+#define SEND_INTERVAL (5 * CLOCK_SECOND) /* clock ticks */
 #define ITERATIONS 100 /* messages */
 
 /* Start sending messages START_DELAY secs after we start so that routing can
@@ -62,13 +60,9 @@
 #define START_DELAY 60
 
 static struct uip_udp_conn * mcast_conn;
-static char buf[MAX_PAYLOAD_LEN];
+static char buf[] = "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Duis accumsan fringilla ultrices. Cras nibh magna, tincidunt in libero nec, dapibus vulputate nisi. Praesent dapibus ipsum eu eros scelerisque congue. Aliquam pharetra eros eu est tincidunt cursus.";// Pellentesque commodo quam vel neque posuere, ornare finibus arcu sollicitudin. Maecenas orci dui, commodo nec tellus eu, tincidunt consequat ligula. Maecenas laoreet leo ligula, ac consectetur justo accumsan ac. In elementum feugiat felis. Maecenas metus dui, vulputate eget condimentum a, ullamcorper ut metus. Phasellus venenatis sem arcu, non finibus velit vehicula quis. Cras ac porta enim. Maecenas lacus quam, venenatis ut diam et, tincidunt pulvinar nibh. Ut et orci sit amet nulla feugiat dapibus nec varius tortor. In consequat efficitur viverra. Nullam cursus lectus eu sem pulvinar, vitae hendrerit nibh vehicula. Donec viverra magna arcu, a elementum massa iaculis sed. Nullam sed bibendum nisi. Interdum et malesuada fames ac ante ipsum primis in faucibus. Proin sit amet eleifend nulla. Donec facilisis sem elit, et aliquet nulla vestibulum nec. Interdum et malesuada fames ac ante ipsum primis in faucibus. Vestibulum in volutpat.";
 static uint32_t seq_id;
 
-#if !NETSTACK_CONF_WITH_IPV6 || !UIP_CONF_ROUTER || !UIP_IPV6_MULTICAST || !UIP_CONF_IPV6_RPL
-#error "This example can not work with the current contiki configuration"
-#error "Check the values of: NETSTACK_CONF_WITH_IPV6, UIP_CONF_ROUTER, UIP_CONF_IPV6_RPL"
-#endif
 /*---------------------------------------------------------------------------*/
 PROCESS(rpl_root_process, "RPL ROOT, Multicast Sender");
 AUTOSTART_PROCESSES(&rpl_root_process);
@@ -76,25 +70,22 @@ AUTOSTART_PROCESSES(&rpl_root_process);
 static void
 multicast_send(void)
 {
-  uint32_t id;
-
-  id = uip_htonl(seq_id);
-  memset(buf, 0, MAX_PAYLOAD_LEN);
-  memcpy(buf, &id, sizeof(seq_id));
+  //uint32_t id = uip_htonl(seq_id);
+  //memset(buf, 0, MAX_PAYLOAD_LEN);
+  //memcpy(buf, &id, sizeof(seq_id));
 
   PRINTF("Send to: ");
   PRINT6ADDR(&mcast_conn->ripaddr);
+  PRINTF("\n");
   PRINTF(" Remote Port %u,", uip_ntohs(mcast_conn->rport));
-  PRINTF(" (msg=0x%08"PRIx32")", uip_ntohl(*((uint32_t *)buf)));
-  PRINTF(" %lu bytes\n", (unsigned long)sizeof(id));
+  //PRINTF(" (msg=0x%08"PRIx32")\n", uip_ntohl(*((uint32_t *)buf)));
+  PRINTF(" %u bytes\n", sizeof(buf) / sizeof(buf[0]));
 
   seq_id++;
-  uip_udp_packet_send(mcast_conn, buf, sizeof(id));
+  uip_udp_packet_send(mcast_conn, buf, sizeof(buf) / sizeof(buf[0]));
 }
 /*---------------------------------------------------------------------------*/
-static void
-prepare_mcast(void)
-{
+static void prepare_mcast(void) {
   uip_ipaddr_t ipaddr;
 
   /*
@@ -105,8 +96,7 @@ prepare_mcast(void)
   mcast_conn = udp_new(&ipaddr, UIP_HTONS(MCAST_SINK_UDP_PORT), NULL);
 }
 /*---------------------------------------------------------------------------*/
-PROCESS_THREAD(rpl_root_process, ev, data)
-{
+PROCESS_THREAD(rpl_root_process, ev, data) {
   static struct etimer et;
   static unsigned long base_radio_listen = 0;
   static unsigned long base_radio_transmit = 0;
