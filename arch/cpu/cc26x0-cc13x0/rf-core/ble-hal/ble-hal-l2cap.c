@@ -203,7 +203,7 @@ static void advertising_event(struct rtimer *t, void *ptr);
 #define CONN_RX_BUFFERS_OVERHEAD    8
 #define CONN_RX_BUFFERS_DATA_LEN    60
 #define CONN_RX_BUFFERS_LEN       (CONN_RX_BUFFERS_OVERHEAD + CONN_RX_BUFFERS_DATA_LEN)
-#define CONN_RX_BUFFERS_NUM       12
+#define CONN_RX_BUFFERS_NUM       6
 
 /* custom status used for tx buffers */
 #define DATA_ENTRY_FREE         5
@@ -212,7 +212,7 @@ static void advertising_event(struct rtimer *t, void *ptr);
 #define CONN_TX_BUFFERS_OVERHEAD    9
 #define CONN_TX_BUFFERS_DATA_LEN    27
 #define CONN_TX_BUFFERS_LEN       (CONN_TX_BUFFERS_OVERHEAD + CONN_TX_BUFFERS_DATA_LEN)
-#define CONN_TX_BUFFERS_NUM       12
+#define CONN_TX_BUFFERS_NUM       6
 
 #define CONN_WIN_SIZE           1
 #define CONN_WIN_OFFSET          20
@@ -439,22 +439,27 @@ on(void)
   if(!rf_core_is_accessible()) {
     /* boot the rf core */
 
+#if RADIO_CONF_BLE5
     /*    boot and apply Bluetooth 5 Patch    */
-    if(rf_core_power_up() != RF_CORE_CMD_OK) {
+    if (rf_core_power_up() != RF_CORE_CMD_OK) {
       LOG_ERR("rf_core_boot: rf_core_power_up() failed\n");
       rf_core_power_down();
       return RF_CORE_CMD_ERROR;
     }
     
-#if RADIO_CONF_BLE5
-    /*  Apply Bluetooth 5 patch, if applicable  */
     rf_patch_cpe_bt5();
-#endif
-    if(rf_core_start_rat() != RF_CORE_CMD_OK) {
+    
+    if (rf_core_start_rat() != RF_CORE_CMD_OK) {
       LOG_ERR("rf_core_boot: rf_core_start_rat() failed\n");
       rf_core_power_down();
       return RF_CORE_CMD_ERROR;
     }
+#else
+    if(rf_core_boot() != RF_CORE_CMD_OK) {
+      LOG_ERR("ble_controller_reset() could not boot rf-core\n");
+      return BLE_RESULT_ERROR;
+    }
+#endif
     rf_core_setup_interrupts();
     oscillators_switch_to_hf_xosc();
 
@@ -811,10 +816,6 @@ read_connection_interval(unsigned int conn_handle, unsigned int *conn_interval)
   return BLE_RESULT_OK;
 }
 /*---------------------------------------------------------------------------*/
-static ble_result_t adv_ext(const uint8_t *tgt_ble_addr, const uint8_t *data, unsigned len) {
-  LOG_ERR("extended is not supported using l2cap hal!\n");
-  return BLE_RESULT_NOT_SUPPORTED;
-}
 static ble_result_t set_scan_param(ble_scan_type_t type,
 			    unsigned int scan_interval,
 			    unsigned int scan_window,
@@ -844,7 +845,8 @@ const struct ble_hal_driver ble_hal =
   reset,
   read_bd_addr,
   read_buffer_size,
-  adv_ext,
+  NULL,
+  NULL,
   set_adv_param,
   read_adv_channel_tx_power,
   set_adv_data,
@@ -988,7 +990,11 @@ initiator_rx(ble_init_param_t *init)
       for(i = 0; i < BLE_ADDR_SIZE; i++) {
         conn->peer_address[i] = rx_data[BLE_ADDR_SIZE + 1 - i];
       }
+#if RADIO_CONF_BLE5
+      conn->timestamp_rt = ticks_from_unit(((rfc_ble5ScanInitOutput_t*)init->output_buf)->timeStamp, TIME_UNIT_RF_CORE);
+#else
       conn->timestamp_rt = ticks_from_unit(((rfc_bleInitiatorOutput_t *)init->output_buf)->timeStamp, TIME_UNIT_RF_CORE);
+#endif
       wakeup = conn->timestamp_rt + ticks_from_unit((conn->win_offset + conn->interval), TIME_UNIT_1_25_MS) - CONN_PREPROCESSING_TIME_TICKS;
       rtimer_set(&conn->timer, wakeup, 0, connection_event_master, (void *)conn);
       conn->active = 1;
@@ -1029,30 +1035,63 @@ initiator_event(struct rtimer *t, void *ptr)
 
   init_connection_parameters(conn, interval, win_size, win_offset, latency, timeout);
 
-  rfc_bleWhiteListEntry_t whitelist[BLE_MODE_MAX_CONNECTIONS];
   /* TODO: find a sane way to deal with this */
-  whitelist[0].size = 2;
+  rfc_bleWhiteListEntry_t whitelist[5];
+  whitelist[0].size = 5;
   whitelist[0].conf.bEnable = 1;  /* enabled */
   whitelist[0].conf.addrType = 0; /* public */
   whitelist[0].conf.bWlIgn = 0; /* not ignored */
-  whitelist[0].addressHi = 0x54 << 24
-                         | 0x6C << 16
-                         | 0x0E << 8
-                         | 0x9B;
-  whitelist[0].address = 0x63 << 8
-                       | 0x53;
+  whitelist[0].addressHi = 0xCC << 24
+                         | 0x78 << 16
+                         | 0xAB << 8
+                         | 0x77;
+  whitelist[0].address = 0xA7 << 8
+                       | 0x82;
 
   whitelist[1].size = 0;
   whitelist[1].conf.bEnable = 1;
   whitelist[1].conf.addrType = 0;
   whitelist[1].conf.bWlIgn = 0;
-  whitelist[1].addressHi = 0xB0 << 24
+  whitelist[1].addressHi = 0xCC << 24
+                         | 0x78 << 16
+                         | 0xAB << 8
+                         | 0x71;
+  whitelist[1].address = 0x40 << 8
+                       | 0x07;
+
+  whitelist[2].size = 0;
+  whitelist[2].conf.bEnable = 1;  /* enabled */
+  whitelist[2].conf.addrType = 0; /* public */
+  whitelist[2].conf.bWlIgn = 0; /* not ignored */
+  whitelist[2].addressHi = 0x54 << 24
+                         | 0x6C << 16
+                         | 0x0E << 8
+                         | 0x83;
+  whitelist[2].address = 0x3F << 8
+                       | 0xE6;
+
+  whitelist[3].size = 0;
+  whitelist[3].conf.bEnable = 1;
+  whitelist[3].conf.addrType = 0;
+  whitelist[3].conf.bWlIgn = 0;
+  whitelist[3].addressHi = 0x54 << 24
+                         | 0x6C << 16
+                         | 0x0E << 8
+                         | 0x9B;
+  whitelist[3].address = 0x63 << 8
+                       | 0x53;
+
+  whitelist[4].size = 0;
+  whitelist[4].conf.bEnable = 1;
+  whitelist[4].conf.addrType = 0;
+  whitelist[4].conf.bWlIgn = 0;
+  whitelist[4].addressHi = 0xB0 << 24
                          | 0x91 << 16
                          | 0x22 << 8
                          | 0x69;
-  whitelist[1].address = 0xFC << 8
+  whitelist[4].address = 0xFC << 8
                        | 0x5A;
-
+  
   scaHop = (conn->sca << 5) + conn->hop;
 
   memcpy(&conn_req_buf[0], &conn->access_address, 4);
@@ -1359,6 +1398,7 @@ connection_event_master(struct rtimer *t, void *ptr)
   if(conn->counter == 0) {
     /* the master skips connection event 0, because it is usually too early */
     conn->start_rt = conn->timestamp_rt + ticks_from_unit(conn->win_offset, TIME_UNIT_1_25_MS);
+    LOG_DBG("Skipping first event. time: %lu, next: %lu\n", RTIMER_NOW(), conn->start_rt);
     update_data_channel(conn);
     first_packet = 1;
   }

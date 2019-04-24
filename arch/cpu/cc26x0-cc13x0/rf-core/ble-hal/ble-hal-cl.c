@@ -138,7 +138,7 @@ unsigned min(unsigned lhs, unsigned rhs) {
 }
 
 enum { AUX_TGT_DELAY_TICKS = 60000 };
-enum { ADV_PREPROCESSING_TICKS = 1000 };
+enum { ADV_PREPROCESSING_TICKS = 800 };
 
 /* unsigned long base = ticks_to_unit(RTIMER_NOW(), TIME_UNIT_RF_CORE); */
 /* unsigned long ext_start = base + ticks_to_unit(ticks_from_unit(50, TIME_UNIT_MS), TIME_UNIT_RF_CORE); */

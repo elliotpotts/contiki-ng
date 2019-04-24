@@ -163,7 +163,6 @@ init_scan_resp_data(char *scan_resp_data)
 
   return scan_resp_data_len;
 }
-#endif
 /*---------------------------------------------------------------------------*/
 void
 input_l2cap_conn_req(uint8_t *data)
@@ -229,6 +228,8 @@ input_l2cap_conn_req(uint8_t *data)
   packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &channel->peer_addr);
   NETSTACK_RADIO.send(packetbuf_hdrptr(), packetbuf_totlen());
 }
+/*---------------------------------------------------------------------------*/
+#else
 void
 input_l2cap_conn_resp(uint8_t *data)
 {
@@ -262,6 +263,7 @@ input_l2cap_conn_resp(uint8_t *data)
     LOG_DBG("l2cap_conn_resp: connection established\n");
   }
 }
+#endif
 /*---------------------------------------------------------------------------*/
 static void
 init(void)
@@ -281,23 +283,18 @@ init(void)
   NETSTACK_RADIO.get_object(RADIO_CONST_BLE_BD_ADDR, &ble_addr, BLE_ADDR_SIZE);
   LOG_DBG("ble address is: %.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", ble_addr[0], ble_addr[1], ble_addr[2], ble_addr[3], ble_addr[4], ble_addr[5]);
 
-  #if UIP_CONF_ROUTER
-  int conn_interval;
-  const unsigned char ble_peer_addr[BLE_ADDR_SIZE] = {0xCC, 0x78, 0xAB, 0x71, 0x40, 0x07};
-  
+#if UIP_CONF_ROUTER
   /* convert to the BLE controller units (in 1.25 ms) */
-  conn_interval = (int)(((double)(CONNECTION_INTERVAL_MS)) / 1.25);
+  const int conn_interval = (int)(((double)(CONNECTION_INTERVAL_MS)) / 1.25);
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_CONN_INTERVAL, conn_interval);
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_CONN_LATENCY, CONNECTION_SLAVE_LATENCY);
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_CONN_SUPERVISION_TIMEOUT, CONNECTION_TIMEOUT);
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_SCAN_OWN_ADDR_TYPE, BLE_ADDR_TYPE_PUBLIC);
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_PEER_ADDR_TYPE, BLE_ADDR_TYPE_PUBLIC);
-  NETSTACK_RADIO.set_object(RADIO_PARAM_BLE_PEER_ADDR, ble_peer_addr, BLE_ADDR_SIZE);
   
   /* enable connection initiation */
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_INITIATOR_ENABLE, 1);
-  
-  #else
+#else
   uint8_t adv_data_len, scan_resp_data_len;
   char adv_data[BLE_ADV_DATA_LEN];
   char scan_resp_data[BLE_SCAN_RESP_DATA_LEN];
@@ -316,11 +313,11 @@ init(void)
 
   /* enable advertisement */
   NETSTACK_RADIO.set_value(RADIO_PARAM_BLE_ADV_ENABLE, 1);
-  #endif
-  
+#endif
   NETSTACK_MAC.on();
 }
 /*---------------------------------------------------------------------------*/
+#if UIP_CONF_ROUTER
 static void
 send_l2cap_conn_req(l2cap_channel_t *channel)
 {
@@ -356,6 +353,7 @@ send_l2cap_conn_req(l2cap_channel_t *channel)
   packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &channel->peer_addr);
   NETSTACK_RADIO.send(packetbuf_hdrptr(), packetbuf_totlen());
 }
+#endif
 /*---------------------------------------------------------------------------*/
 static uint16_t
 check_own_l2cap_credits(l2cap_channel_t *channel)
@@ -486,11 +484,17 @@ input_l2cap_frame_signal_channel(uint8_t *data, uint8_t data_len)
 {
   if(data[4] == L2CAP_CODE_CREDIT) {
     input_l2cap_credit(&data[5]);
-  } else if(data[4] == L2CAP_CODE_CONN_RSP) { //TODO: only when IUP_CONF_ROUTER?
+  }
+#if UIP_CONF_ROUTER
+  else if(data[4] == L2CAP_CODE_CONN_RSP) {
     input_l2cap_conn_resp(&data[5]);
-  } else if(data[4] == L2CAP_CODE_CONN_REQ) { //TODO: only when !IUP_CONF_ROUTER?
+  }
+#else
+  else if(data[4] == L2CAP_CODE_CONN_REQ) {
     input_l2cap_conn_req(&data[5]);
-  } else if(data[4] == L2CAP_CODE_CONN_UPDATE_RSP) {
+  }
+#endif
+  else if(data[4] == L2CAP_CODE_CONN_UPDATE_RSP) {
     input_l2cap_connection_udate_resp(&data[5]);
   } else {
     LOG_WARN("l2cap_frame_signal_channel: unknown signal channel code: %d\n", data[4]);
@@ -550,7 +554,18 @@ input(void)
   l2cap_channel_t *channel;
   uint16_t credits;
 
-  if (frame_type == FRAME_BLE_RX_EVENT) {
+#if UIP_CONF_ROUTER
+  if((frame_type == FRAME_BLE_CONNECTION_EVENT)) {
+    channel = &l2cap_channels[l2cap_channel_count];
+    linkaddr_copy(&channel->peer_addr, packetbuf_addr(PACKETBUF_ADDR_SENDER));
+    LOG_DBG("ble-mac: input: sending L2CAP conn_req: cid: %2d, addr: ", channel->channel_own.cid);
+    LOG_DBG("\n");
+    send_l2cap_conn_req(channel);
+    l2cap_channel_count++;
+  }
+#endif
+  
+  if(frame_type == FRAME_BLE_RX_EVENT) {
     memcpy(&channel_id, &data[2], 2);
     channel = get_channel_for_cid(channel_id);
     LOG_DBG("input %d bytes\n", len);
@@ -567,13 +582,9 @@ input(void)
         send_l2cap_credit(channel, credits);
       }
     }
-  } else if (frame_type == FRAME_BLE_CONNECTION_EVENT) {  
-    channel = &l2cap_channels[l2cap_channel_count];
-    linkaddr_copy(&channel->peer_addr, packetbuf_addr(PACKETBUF_ADDR_SENDER));
-    send_l2cap_conn_req(channel);
-    l2cap_channel_count++;
-  } else if(frame_type == FRAME_BLE_TX_EVENT) {
-    /* check if there are still fragments left to be transmitted */
+  }
+  /* check if there are still fragments left to be transmitted */
+  if(frame_type == FRAME_BLE_TX_EVENT) {
     channel = get_channel_for_addr(packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
     if(channel == NULL) {
       LOG_WARN("input (TX_EVENT): no channel found for CID: %d\n", channel_id);

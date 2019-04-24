@@ -49,7 +49,8 @@
 #include <string.h>
 #include <stdio.h>
 /*---------------------------------------------------------------------------*/
-#define SERVER_IP            "fe80::566c:0eff:fe9b:6353"
+//#define SERVER_IP            "fe80::566c:0eff:fe9b:6353"
+#define SERVER_IP            "fe80::ce78:abff:fe77:a782"
 #define CLIENT_PORT          61617
 #define SERVER_PORT          61616
 

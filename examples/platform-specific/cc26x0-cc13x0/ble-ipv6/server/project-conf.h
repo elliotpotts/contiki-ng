@@ -18,7 +18,7 @@
 #define QUEUEBUF_CONF_NUM                       1
 #define UIP_CONF_BUFFER_SIZE                    1280
 
-#define RADIO_CONF_BLE5                         1
+#define RADIO_CONF_BLE5                         0
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
 
@@ -32,7 +32,7 @@
 #define UIP_CONF_ND6_SEND_NS                    1
 
 #define BLE_CONF_DEVICE_NAME                    "Ell's CC2650 Server"
-#define BLE_MODE_CONF_MAX_CONNECTIONS           2
+#define BLE_MODE_CONF_MAX_CONNECTIONS           1
 
 /* 6LoWPAN settings */
 #define SICSLOWPAN_CONF_MAC_MAX_PAYLOAD         1280

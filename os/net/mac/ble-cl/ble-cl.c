@@ -113,6 +113,7 @@ static uint8_t* append_pdu_to_packetbuf(uint8_t* out, const ext_adv_pdu* pdu) {
 // Finish the chain using the final pdu.
 // If head == NULL, this is both the first and last pdu
 static void ble_cl_chain_finish(ble_cl_t* ble_cl, adv_chain_entry_t* head, const ext_adv_pdu* last_pdu) {
+  LOG_DBG("Finishing...\n");
   // Start a new packet
   packetbuf_clear();
   // Where to put next chunk of data
@@ -120,7 +121,6 @@ static void ble_cl_chain_finish(ble_cl_t* ble_cl, adv_chain_entry_t* head, const
   // Process packets earlier on in the chain
   for (adv_chain_entry_t* adv = head; adv != NULL; adv = adv->next) {
     dataptr = append_pdu_to_packetbuf(dataptr, &adv->pdu);
-    adv = adv->next;
   }
   // Process last packet
   dataptr = append_pdu_to_packetbuf(dataptr, last_pdu);
@@ -129,7 +129,7 @@ static void ble_cl_chain_finish(ble_cl_t* ble_cl, adv_chain_entry_t* head, const
   for (adv_chain_entry_t* adv = head; adv != NULL; adv = adv->next) {
     adv->populated = false;
   }
-
+  
   NETSTACK_NETWORK.input(); // and PRAY
 }
 
@@ -165,11 +165,11 @@ static void send_packet(mac_callback_t sent, void *ptr) {
   uint8_t *maybe_tgt_ble_addr = NULL;
   if (!packetbuf_holds_broadcast()) {
     eui64_to_ble_addr(tgt_ble_addr, (uint8_t*) packetbuf_addr(PACKETBUF_ADDR_RECEIVER));
-    LOG_DBG("AKA ^%.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n",
-    	    tgt_ble_addr[0], tgt_ble_addr[1], tgt_ble_addr[2], tgt_ble_addr[3], tgt_ble_addr[4], tgt_ble_addr[5]);
+    /* LOG_DBG("AKA ^%.2X:%.2X:%.2X:%.2X:%.2X:%.2X\n", */
+    /* 	    tgt_ble_addr[0], tgt_ble_addr[1], tgt_ble_addr[2], tgt_ble_addr[3], tgt_ble_addr[4], tgt_ble_addr[5]); */
     maybe_tgt_ble_addr = tgt_ble_addr;
   } else {
-    LOG_DBG("Sending broadcast\n");
+    /* LOG_DBG("Sending broadcast\n"); */
   }
   
   uint8_t* data = packetbuf_dataptr();
@@ -305,13 +305,14 @@ static void packet_input(void) {
       if (!ble_cl_chain_append(ble_cl, head, &pdu)) {
 	LOG_ERR("Failed to append chain entry!\n");
       }
+      return;
     } else {
       LOG_DBG("<--- Starting chain\n");
       if (!ble_cl_chain_start(ble_cl, &pdu)) {
 	LOG_ERR("Failed to start chain!\n");
       }
+      return;
     }
-    return;
   }
   case 0b100:
   case 0b110: {
