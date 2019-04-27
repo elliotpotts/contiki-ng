@@ -84,7 +84,9 @@ static adv_chain_entry_t* ble_cl_chain_append(ble_cl_t* ble_cl, adv_chain_entry_
       link->populated = true;
       link->is_head = false;
       memcpy(&link->pdu, pdu, sizeof(*pdu));
+      link->next = NULL;
       last->next = link;
+      LOG_DBG("{%p}->next = {%p}\n", last, link);
       return link;
     }
   }
@@ -102,24 +104,27 @@ static uint8_t* append_pdu_to_packetbuf(uint8_t* out, const ext_adv_pdu* pdu) {
     packetbuf_set_addr(PACKETBUF_ADDR_RECEIVER, &linkaddr_node_addr);
   }
   const unsigned adv_data_len = pdu->adv_data_len;
+  LOG_DBG("packetbuf_remaininglen() -> %d\n", packetbuf_remaininglen());
   if (packetbuf_remaininglen() < adv_data_len) {
     LOG_ERR("Not enough room in packetbuf!\n");
+    return 0;
+  } else {
+    memcpy(out, pdu->adv_data, adv_data_len);
+    packetbuf_set_datalen(packetbuf_datalen() + adv_data_len);
+    return out + adv_data_len;
   }
-  memcpy(out, pdu->adv_data, adv_data_len);
-  packetbuf_set_datalen(packetbuf_datalen() + adv_data_len);
-  return out + adv_data_len;
 }
 
 // Finish the chain using the final pdu.
 // If head == NULL, this is both the first and last pdu
 static void ble_cl_chain_finish(ble_cl_t* ble_cl, adv_chain_entry_t* head, const ext_adv_pdu* last_pdu) {
-  LOG_DBG("Finishing...\n");
   // Start a new packet
   packetbuf_clear();
   // Where to put next chunk of data
   uint8_t *dataptr = packetbuf_dataptr();
   // Process packets earlier on in the chain
   for (adv_chain_entry_t* adv = head; adv != NULL; adv = adv->next) {
+    LOG_DBG("Appending {%p}->pdu of len %d\n", adv, adv->pdu.adv_data_len);
     dataptr = append_pdu_to_packetbuf(dataptr, &adv->pdu);
   }
   // Process last packet
@@ -284,8 +289,6 @@ static void packet_input(void) {
   pdu.adv_data_len = adv_data_end - adv_data_begin;
   memcpy(&pdu.adv_data, adv_data_begin, pdu.adv_data_len);
 
-  /* LOG_DBG("%u bytes of advData present\n", adv_data_end - adv_data_begin); */
-
   adv_chain_entry_t* head = ble_cl_chain_get_head(ble_cl, &pdu);
   unsigned conditions = ((adv_data_begin != adv_data_end) << 2)
                       | (pdu.adi_present << 1)
@@ -301,13 +304,13 @@ static void packet_input(void) {
   case 0b111: {
     adv_chain_entry_t* head = ble_cl_chain_get_head(ble_cl, &pdu);
     if (head) {
-      LOG_DBG("<--- Continueing chain\n");
+      LOG_DBG("<--- Continuing chain (head {%p}) with pdu of %u octets\n", head, pdu.adv_data_len);
       if (!ble_cl_chain_append(ble_cl, head, &pdu)) {
 	LOG_ERR("Failed to append chain entry!\n");
       }
       return;
     } else {
-      LOG_DBG("<--- Starting chain\n");
+      LOG_DBG("<--- Starting chain with pdu of %u octets\n", pdu.adv_data_len);
       if (!ble_cl_chain_start(ble_cl, &pdu)) {
 	LOG_ERR("Failed to start chain!\n");
       }
@@ -316,7 +319,7 @@ static void packet_input(void) {
   }
   case 0b100:
   case 0b110: {
-    LOG_DBG("<--- Finishing chain\n");
+    LOG_DBG("<--- Finishing chain with pdu of %u octets\n", pdu.adv_data_len);
     ble_cl_chain_finish(ble_cl, head, &pdu);
     return;
   }
