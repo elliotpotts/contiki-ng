@@ -283,7 +283,11 @@ static void connection_event_master(struct rtimer *t, void *ptr);
 #define INIT_RX_BUFFERS_DATA_LEN    60
 #define INIT_RX_BUFFERS_LEN       (INIT_RX_BUFFERS_OVERHEAD + INIT_RX_BUFFERS_DATA_LEN)
 #define INIT_RX_BUFFERS_NUM       2
+#if RADIO_CONF_BLE5
+#define INIT_PREPROCESSING_TIME_TICKS 75
+#else
 #define INIT_PREPROCESSING_TIME_TICKS 65
+#endif
 
 typedef struct {
   uint16_t init_interval;
@@ -979,7 +983,11 @@ initiator_rx(ble_init_param_t *init)
       for(i = 0; i < BLE_ADDR_SIZE; i++) {
         conn->peer_address[i] = rx_data[BLE_ADDR_SIZE + 1 - i];
       }
+#if RADIO_CONF_BLE5
+      conn->timestamp_rt = ticks_from_unit(((rfc_ble5ScanInitOutput_t *)init->output_buf)->timeStamp, TIME_UNIT_RF_CORE);
+#else
       conn->timestamp_rt = ticks_from_unit(((rfc_bleInitiatorOutput_t *)init->output_buf)->timeStamp, TIME_UNIT_RF_CORE);
+#endif
       wakeup = conn->timestamp_rt + ticks_from_unit((conn->win_offset + conn->interval), TIME_UNIT_1_25_MS) - CONN_PREPROCESSING_TIME_TICKS;
       rtimer_set(&conn->timer, wakeup, 0, connection_event_master, (void *)conn);
       conn->active = 1;
@@ -1020,29 +1028,39 @@ initiator_event(struct rtimer *t, void *ptr)
 
   init_connection_parameters(conn, interval, win_size, win_offset, latency, timeout);
 
-  rfc_bleWhiteListEntry_t whitelist[BLE_MODE_MAX_CONNECTIONS];
-  whitelist[0].size = 2;
-  whitelist[0].conf.bEnable = 1;  /* enabled */
-  whitelist[0].conf.addrType = 0; /* public */
-  whitelist[0].conf.bWlIgn = 0; /* not ignored */
-  whitelist[0].addressHi = init->peer_addr[0] << 24
-                         | init->peer_addr[1] << 16
-                         | init->peer_addr[2] << 8
-                         | init->peer_addr[3];
-  whitelist[0].address = init->peer_addr[4] << 8
-                       | init->peer_addr[5];
-
-  whitelist[1].size = 0;
-  whitelist[1].conf.bEnable = 1;
-  whitelist[1].conf.addrType = 0;
-  whitelist[1].conf.bWlIgn = 0;
-  whitelist[1].addressHi = 0x54 << 24
-                         | 0x6C << 16
-                         | 0x0E << 8
-                         | 0x9B;
-  whitelist[1].address = 0x63 << 8
-                       | 0x53;
-
+  rfc_bleWhiteListEntry_t whitelist[6];
+  whitelist[0] = (rfc_bleWhiteListEntry_t) {
+    .size = 6,
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xCC << 24) | (0x78 << 16) | (0xAB << 8) | 0x77,
+    .address =   (0xA7 << 8)  | 0x82
+  };
+  whitelist[1] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xCC << 24) | (0x78 << 16) | (0xAB << 8) | 0x71,
+    .address =   (0x40 << 8)  | 0x07
+  };
+  whitelist[2] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0x54 << 24) | (0x6C << 16) | (0x0E << 8) | 0x83,
+    .address =   (0x3F << 8)  | 0xE6
+  };
+  whitelist[3] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0x54 << 24) | (0x6C << 16) | (0x0E << 8) | 0x9B,
+    .address =   (0x63 << 8)  | 0x53
+  };
+  whitelist[4] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xB0 << 24) | (0x91 << 16) | (0x22 << 8) | 0x69,
+    .address =   (0xFC << 8)  | 0x5A
+  };
+  whitelist[5] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xB0 << 24) | (0x91 << 16) | (0x22 << 8) | 0x69,
+    .address =   (0xFB << 8)  | 0x8F
+  };
+  
   scaHop = (conn->sca << 5) + conn->hop;
 
   memcpy(&conn_req_buf[0], &conn->access_address, 4);

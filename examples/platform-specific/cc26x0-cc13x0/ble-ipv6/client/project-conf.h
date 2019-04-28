@@ -13,6 +13,7 @@
 #define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
 
 #define RTIMER_CONF_MULTIPLE_ACCESS             0
+#define RADIO_CONF_BLE5                         1
 
 #define PACKETBUF_CONF_SIZE                     1280
 #define QUEUEBUF_CONF_NUM                       1

@@ -13,6 +13,7 @@
 #define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
 
 #define RTIMER_CONF_MULTIPLE_ACCESS             1
+#define RADIO_CONF_BLE5                         1
 
 #define PACKETBUF_CONF_SIZE                     1280
 #define QUEUEBUF_CONF_NUM                       1
@@ -20,6 +21,8 @@
 
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
+
+#define RPL_CONF_WITH_PROBING                   0
 
 /* network layer settings */
 #define UIP_CONF_ROUTER                         1

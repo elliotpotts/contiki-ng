@@ -313,7 +313,6 @@ rf_ble_cmd_create_initiator_params(uint8_t *param, dataQueue_t *rx_queue,
   p->rxConfig.bAppendStatus = 1;
   p->rxConfig.bAppendTimestamp = 1;
   
-  /*    p->initConfig.bUseWhiteList = 0; */
   p->initConfig.bUseWhiteList = 1;
   p->initConfig.bDynamicWinOffset = 0;
   p->initConfig.deviceAddrType = own_addr_type;
