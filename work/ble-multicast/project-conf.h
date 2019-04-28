@@ -8,18 +8,16 @@
 #define LOG_CONF_LEVEL_SMRF                     LOG_LEVEL_ERR
 #define LOG_CONF_LEVEL_6LOWPAN                  LOG_LEVEL_ERR
 #define LOG_CONF_LEVEL_TCPIP                    LOG_LEVEL_ERR
-#define LOG_CONF_LEVEL_MAC                      LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_MAC                      LOG_LEVEL_ERR
 #define LOG_CONF_LEVEL_FRAMER                   LOG_LEVEL_ERR
-#define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_DBG
-#define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_DBG
+#define LOG_CONF_LEVEL_RADIO                    LOG_LEVEL_ERR
+#define LOG_CONF_LEVEL_MAIN                     LOG_LEVEL_ERR
 
 #define RTIMER_CONF_MULTIPLE_ACCESS             1
-
-#define ENERGEST_CONF_ON                        0
-
+#define ENERGEST_CONF_ON                        1
 
 // Use L2CAP
-/* */
+/*
 #define RADIO_CONF_BLE5                         0
 #define BLE_MODE_CONF_MAX_CONNECTIONS           1
 #define PACKETBUF_CONF_SIZE                     400
@@ -27,16 +25,16 @@
 #define UIP_CONF_BUFFER_SIZE                    400
 #define NETSTACK_CONF_RADIO                     ble_cc2650_driver
 #define NETSTACK_CONF_MAC                       ble_l2cap_driver
+*/
 
 // Use CL
-/*
+/* */
 #define RADIO_CONF_BLE5                         1
 #define PACKETBUF_CONF_SIZE                     1300
 #define QUEUEBUF_CONF_NUM                       1
-#define UIP_CONF_BUFFER_SIZE                    1100
+#define UIP_CONF_BUFFER_SIZE                    1300
 #define NETSTACK_CONF_RADIO                     nullradio_driver
 #define NETSTACK_CONF_MAC                       ble_cl_driver
-*/
 
 #define RPL_CONF_WITH_PROBING                   0
 

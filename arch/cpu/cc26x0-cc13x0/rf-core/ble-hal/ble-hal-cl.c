@@ -15,6 +15,7 @@
 #include "os/dev/ble-hal.h"
 #include "os/net/netstack.h"
 #include "os/net/packetbuf.h"
+#include "sys/energest.h"
 
 #include "dev/oscillators.h"
 #include "lpm.h"
@@ -59,7 +60,7 @@ typedef struct {
   scan_data_entry *rx_queue_current;
   /* radio interface */
   uint8_t ble_addr[BLE_ADDR_SIZE];
-  rfc_bleWhiteListEntry_t whitelist[5];
+  rfc_bleWhiteListEntry_t whitelist[6];
   rfc_ble5ScannerPar_t params;
   rfc_ble5ScanInitOutput_t output;
   rfc_CMD_BLE5_SCANNER_t cmd;
@@ -197,11 +198,24 @@ ble5_ext_adv_result_t adv_ext(const uint8_t *tgt_addr,
     .pParams = &params,
     .pOutput = &output
   };  
-  rf_ble_cmd_send((uint8_t*) &cmd);
+  if (rf_ble_cmd_send((uint8_t*) &cmd) != RF_BLE_CMD_OK) {
+    LOG_ERR("Fatal: failed to send CMD_BLE5_ADV_EXT!\n");
+    return (ble5_ext_adv_result_t) {
+      .bytes_sent = 0,
+      .radio_data = &g_advertiser
+    };
+  };
+  ENERGEST_ON(ENERGEST_TYPE_TRANSMIT);
   g_advertiser.last_start_time = start_time;
   memcpy(&g_advertiser.last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
-  rf_ble_cmd_wait((uint8_t*) &cmd);
-    
+  if (rf_ble_cmd_wait((uint8_t*) &cmd) != RF_BLE_CMD_OK) {
+    LOG_ERR("Fatal: failed to wait for CMD_BLE5_ADV_EXT!\n");
+    return (ble5_ext_adv_result_t) {
+      .bytes_sent = 0,
+      .radio_data = &g_advertiser
+    };
+  }
+  ENERGEST_OFF(ENERGEST_TYPE_TRANSMIT);
   return (ble5_ext_adv_result_t) {
     .bytes_sent = adv_data_len,
     .radio_data = &g_advertiser
@@ -252,12 +266,27 @@ ble5_ext_adv_result_t aux_adv(ble5_ext_adv_result_t *prev_result,
     .pParams = &params,
     .pOutput = &output
   };
-  LOG_DBG("About to send\n");
-  rf_ble_cmd_send((uint8_t*) &cmd);
+  if (rf_ble_cmd_send((uint8_t*) &cmd) != RF_BLE_CMD_OK) {
+    LOG_ERR("Fatal: failed to send CMD_BLE5_ADV_AUX!\n");
+    return (ble5_ext_adv_result_t) {
+      .bytes_sent = 0,
+      .radio_data = &g_advertiser
+    };
+  };
+  ENERGEST_ON(ENERGEST_TYPE_TRANSMIT);
   advertiser->last_start_time = start_time;
   memcpy(&advertiser->last_aux_ptr, aux_ptr, sizeof(*aux_ptr));
-  
-  rf_ble_cmd_wait((uint8_t*) &cmd);
+  if (rf_ble_cmd_wait((uint8_t*) &cmd) != RF_BLE_CMD_OK) {
+    LOG_ERR("Fatal: failed to wait for CMD_BLE5_ADV_AUX!\n");
+    if (cmd.status == 0x800) {
+      LOG_ERR("Cause: scheduled to execute in the past. Time now: %lu, scheduled for: %lu\n", RTIMER_NOW(), cmd.startTime);
+    }
+    return (ble5_ext_adv_result_t) {
+      .bytes_sent = 0,
+      .radio_data = &g_advertiser
+    };
+  };
+  ENERGEST_OFF(ENERGEST_TYPE_TRANSMIT);
 
   return (ble5_ext_adv_result_t) {
     .bytes_sent = adv_data_len,
@@ -278,7 +307,7 @@ static void init_scanner(ble_scanner_t* scanner) {
   scanner->rx_queue.pLastEntry = NULL;
   scanner->rx_queue_current = &scanner->rx_buffers[0];
   scanner->whitelist[0] = (rfc_bleWhiteListEntry_t) {
-    .size = 5,
+    .size = 6,
     .conf = { .bEnable = 1 },
     .addressHi = (0xCC << 24) | (0x78 << 16) | (0xAB << 8) | 0x77,
     .address =   (0xA7 << 8)  | 0x82
@@ -302,6 +331,11 @@ static void init_scanner(ble_scanner_t* scanner) {
     .conf = { .bEnable = 1 },
     .addressHi = (0xB0 << 24) | (0x91 << 16) | (0x22 << 8) | 0x69,
     .address =   (0xFC << 8)  | 0x5A
+  };
+  scanner->whitelist[5] = (rfc_bleWhiteListEntry_t) {
+    .conf = { .bEnable = 1 },
+    .addressHi = (0xB0 << 24) | (0x91 << 16) | (0x22 << 8) | 0x69,
+    .address =   (0xFB << 8)  | 0x8F
   };
   read_bd_addr(scanner->ble_addr);
   scanner->params = (rfc_ble5ScannerPar_t) {
@@ -337,9 +371,13 @@ ble_result_t scanner_stop(ble_scanner_t* scanner) {
   rfc_CMD_STOP_t cmd = {
     .commandNo = CMD_STOP
   };
-  rf_ble_cmd_send((uint8_t*)&cmd);
+  if (rf_ble_cmd_send((uint8_t*) &cmd) != RF_BLE_CMD_OK) {
+    LOG_ERR("Fatal: failed to send CMD_STOP!\n");
+    return BLE_RESULT_ERROR;
+  };
   uint_fast8_t cmd_status = rf_core_wait_cmd_done((uint8_t*)&cmd);
   assert(cmd_status = RF_CORE_CMD_OK);
+  ENERGEST_OFF(ENERGEST_TYPE_LISTEN);
   return BLE_RESULT_OK;
 }
 
@@ -351,7 +389,12 @@ ble_result_t scanner_start(ble_scanner_t* scanner) {
     return BLE_RESULT_OK;
   } else {
     scanner->cmd.status = RF_CORE_RADIO_OP_STATUS_IDLE;
-    rf_ble_cmd_send((uint8_t*) &scanner->cmd);
+    if (rf_ble_cmd_send((uint8_t*) &scanner->cmd) != RF_BLE_CMD_OK) {
+      LOG_ERR("Fatal: failed to send CMD_BLE5_SCANNER!\n");
+      return BLE_RESULT_ERROR;
+    };
+    ENERGEST_ON(ENERGEST_TYPE_LISTEN);
+    
     //and PRAY!
     rtimer_set(&scanner->timer, RTIMER_NOW() + SCAN_RX_INTERVAL, 0, scan_rx, scanner);
     return BLE_RESULT_OK;

@@ -21,15 +21,16 @@ AUTOSTART_PROCESSES(&mcast_sink_process);
 
 static void recv_handler(void) {
   if(uip_newdata()) {
-    unsigned long net_echo_id = *((unsigned long*) uip_appdata);
-    unsigned long host_echo_id = uip_ntohl(net_echo_id);
-    //       (unsigned long)uip_ntohl((unsigned long) *((uint32_t *)(uip_appdata))),
+    //unsigned long net_echo_id = *((unsigned long*) uip_appdata);
+    //unsigned long host_echo_id = uip_ntohl(net_echo_id);
     count++;
-    PRINTF("In: [0x%08lx], TTL %u, total %x\n", host_echo_id, UIP_IP_BUF->ttl, count);
     // send ack
-    uip_udp_packet_send(send_conn, &net_echo_id, sizeof(net_echo_id));
+    //uip_udp_packet_send(send_conn, &net_echo_id, sizeof(net_echo_id));
+    //PRINTF("In: [0x%08lx], TTL %u, total %x\n", host_echo_id, UIP_IP_BUF->ttl, count);
+
+    // send ack
+    uip_udp_packet_send(send_conn, "!", 1);
   }
-  return;
 }
 
 static uip_ds6_maddr_t * join_mcast_group(void) {

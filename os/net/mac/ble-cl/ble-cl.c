@@ -16,7 +16,7 @@
 
 enum { gap_adv_overhead = 2 };
 enum { gap_adv_type = 0xff };
-enum { adv_chain_entries_max_num = 6 };
+enum { adv_chain_entries_max_num = 7 };
 
 extern const struct ble_hal_driver ble_hal;
 
